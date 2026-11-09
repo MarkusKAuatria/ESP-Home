@@ -1,0 +1,716 @@
+# =============================================================================
+# ESPHome: Ansteuerung einer Heizpatrone im Pufferspeicher (ESP32 + Display)
+#
+# 6 Relais schalten die 3 Heizelemente der Patrone im Stern (gegen N, ~1 kW)
+# oder im Dreieck (gegen die Nachbarphase, ~3 kW). Daraus ergeben sich die
+# Leistungsstufen 0 / 1 / 2 / 3 / 4 / 5 / 6 / 7 / 9 kW (siehe Tabelle unten).
+#
+# Betriebsarten (Entität "Betriebsart"):
+#   Automatik: Stufe nach PV-Überschuss, mit Ein- und Ausschalthysterese
+#              sowie Ein- und Ausschaltverzögerung
+#   Hand:      Leistung über die Entität "Handleistung"
+#
+# In beiden Betriebsarten: Überschreitet der Max-Fühler die Maximaltemperatur,
+# werden alle Relais abgeschaltet. Wieder eingeschaltet wird erst, wenn die
+# Temperatur um die Temperatur-Hysterese gefallen ist.
+#
+# SICHERHEIT: Diese Abschaltung ersetzt NICHT den Sicherheitstemperatur-
+# begrenzer (STB) bzw. Thermostat der Heizpatrone!
+# =============================================================================
+
+substitutions:
+  name: heizpatrone
+  friendly_name: "Heizpatrone"
+
+  # Home-Assistant-Sensor mit dem PV-Überschuss in Watt.
+  # Positiv = Einspeisung ins Netz (siehe Hinweis beim Sensor weiter unten).
+  pv_sensor: sensor.pv_ueberschuss
+
+  # ---------------------------------------------------------------------------
+  # Leistungsstufen laut Spezifikation
+  #   Reihenfolge der Relais: K1 L1, K2 L2/N, K3 L2, K4 L3/N, K5 L3, K6 L1/N
+  #   "1" = Relais ein. Die Optionen der Entität "Handleistung" (weiter unten)
+  #   müssen in derselben Reihenfolge stehen.
+  # ---------------------------------------------------------------------------
+  stufen_leistung: "0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 9000"
+  stufen_relais: '"000000", "100000", "101000", "101010", "111000", "111010", "111100", "111110", "111111"'
+
+  # Pause beim Umschalten der /N-Relais (siehe Skript "relais_schalten")
+  umschaltpause: 500ms
+
+  # Startwerte der in Home Assistant einstellbaren Parameter
+  max_temperatur: "80"
+  temperatur_hysterese: "5"
+  einschalthysterese: "100"
+  ausschalthysterese: "100"
+  einschaltverzoegerung: "60"
+  ausschaltverzoegerung: "30"
+
+  # GPIOs (ESP32-DevKitC mit ESP32-WROOM-32E) – siehe Schaltungsvorschlag
+  pin_k1_l1: GPIO32
+  pin_k2_l2n: GPIO33
+  pin_k3_l2: GPIO25
+  pin_k4_l3n: GPIO26
+  pin_k5_l3: GPIO27
+  pin_k6_l1n: GPIO13
+  pin_onewire_max: GPIO4
+  pin_onewire_speicher: GPIO16
+  pin_spi_clk: GPIO18
+  pin_spi_mosi: GPIO23
+  pin_display_cs: GPIO21
+  pin_display_dc: GPIO17
+  pin_display_reset: GPIO19
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+
+logger:
+
+api:
+  id: api_server
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+# -----------------------------------------------------------------------------
+# Interne Zustände
+# -----------------------------------------------------------------------------
+globals:
+  # Stufe, die die Logik geschaltet haben will (-1 = noch nie gesetzt)
+  - id: ziel_stufe
+    type: int
+    initial_value: "-1"
+  # Stufe, die das Schaltskript gerade umsetzt bzw. zuletzt umgesetzt hat
+  - id: schalt_stufe
+    type: int
+    initial_value: "0"
+  - id: ist_stufe
+    type: int
+    initial_value: "0"
+  # Tatsächlich geschaltete Leistung in W (0 während einer N-Umschaltung)
+  - id: ist_leistung
+    type: float
+    initial_value: "0"
+  # Stufe der PV-Automatik
+  - id: auto_stufe
+    type: int
+    initial_value: "0"
+  # Anstehende Änderung der Automatik: +1 zuschalten, -1 abschalten, 0 keine
+  - id: wunsch_richtung
+    type: int
+    initial_value: "0"
+  - id: wunsch_stufe
+    type: int
+    initial_value: "0"
+  - id: wunsch_seit
+    type: uint32_t
+    initial_value: "0"
+  # PV-Überschuss + aktuell geschaltete Heizleistung
+  - id: verfuegbare_leistung
+    type: float
+    initial_value: "NAN"
+  # Abschaltung wegen Übertemperatur / fehlendem Messwert am Max-Fühler
+  - id: uebertemp
+    type: bool
+    initial_value: "true"
+  - id: status_str
+    type: std::string
+    initial_value: '""'
+
+# -----------------------------------------------------------------------------
+# Temperaturfühler DS18B20 (je Bus ein 4,7-kΩ-Pull-up nach 3,3 V!)
+# -----------------------------------------------------------------------------
+one_wire:
+  # Eingang 1: genau ein Fühler für die Maximaltemperatur
+  - platform: gpio
+    id: bus_max
+    pin: ${pin_onewire_max}
+  # Eingang 2: 1–5 Fühler für den Temperaturverlauf im Speicher
+  - platform: gpio
+    id: bus_speicher
+    pin: ${pin_onewire_speicher}
+
+sensor:
+  - platform: dallas_temp
+    id: temp_max
+    one_wire_id: bus_max
+    name: "Temperatur Max-Fühler"
+    update_interval: 5s
+
+  # Speicherfühler: Zuerst per "index" (Reihenfolge nach Adresse, NICHT nach
+  # Einbauhöhe). Nach dem ersten Start die Adressen aus dem Log ablesen und
+  # "index: X" durch "address: 0x..." ersetzen, damit Speicher 1 oben sitzt.
+  # Nicht vorhandene Fühler einfach löschen.
+  - platform: dallas_temp
+    id: t_speicher_1
+    one_wire_id: bus_speicher
+    index: 0
+    name: "Speicher 1 (oben)"
+    update_interval: 30s
+  - platform: dallas_temp
+    id: t_speicher_2
+    one_wire_id: bus_speicher
+    index: 1
+    name: "Speicher 2"
+    update_interval: 30s
+  - platform: dallas_temp
+    id: t_speicher_3
+    one_wire_id: bus_speicher
+    index: 2
+    name: "Speicher 3"
+    update_interval: 30s
+  - platform: dallas_temp
+    id: t_speicher_4
+    one_wire_id: bus_speicher
+    index: 3
+    name: "Speicher 4"
+    update_interval: 30s
+  - platform: dallas_temp
+    id: t_speicher_5
+    one_wire_id: bus_speicher
+    index: 4
+    name: "Speicher 5 (unten)"
+    update_interval: 30s
+
+  # PV-Überschuss aus Home Assistant
+  - platform: homeassistant
+    id: pv_ueberschuss
+    entity_id: ${pv_sensor}
+    # Liefert dein Sensor Einspeisung als NEGATIVEN Wert, einkommentieren:
+    # filters:
+    #   - multiply: -1
+
+  - platform: template
+    id: heizleistung
+    name: "Heizleistung"
+    icon: mdi:water-boiler
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+  - platform: template
+    name: "Verfügbare Leistung"
+    icon: mdi:solar-power
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 0
+    lambda: "return id(verfuegbare_leistung);"
+    update_interval: 10s
+
+binary_sensor:
+  - platform: template
+    name: "Übertemperatur"
+    device_class: heat
+    lambda: "return id(uebertemp);"
+
+  # Relaiszustände nur zur Anzeige. Die Relais selbst sind bewusst nicht
+  # direkt schaltbar, damit die /N-Relais nie unter Last umschalten.
+  - platform: template
+    name: "Relais K1 L1"
+    lambda: "return id(k1).state;"
+  - platform: template
+    name: "Relais K2 L2-N"
+    lambda: "return id(k2).state;"
+  - platform: template
+    name: "Relais K3 L2"
+    lambda: "return id(k3).state;"
+  - platform: template
+    name: "Relais K4 L3-N"
+    lambda: "return id(k4).state;"
+  - platform: template
+    name: "Relais K5 L3"
+    lambda: "return id(k5).state;"
+  - platform: template
+    name: "Relais K6 L1-N"
+    lambda: "return id(k6).state;"
+
+text_sensor:
+  - platform: template
+    id: status_text
+    name: "Status"
+    icon: mdi:information-outline
+    update_interval: never
+
+# -----------------------------------------------------------------------------
+# Relais (über ULN2803A, GPIO high = Relais ein)
+# -----------------------------------------------------------------------------
+switch:
+  - platform: gpio
+    id: k1
+    pin: ${pin_k1_l1}
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: k2
+    pin: ${pin_k2_l2n}
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: k3
+    pin: ${pin_k3_l2}
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: k4
+    pin: ${pin_k4_l3n}
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: k5
+    pin: ${pin_k5_l3}
+    internal: true
+    restore_mode: ALWAYS_OFF
+  - platform: gpio
+    id: k6
+    pin: ${pin_k6_l1n}
+    internal: true
+    restore_mode: ALWAYS_OFF
+
+# -----------------------------------------------------------------------------
+# Bedienung in Home Assistant
+# -----------------------------------------------------------------------------
+select:
+  - platform: template
+    id: betriebsart
+    name: "Betriebsart"
+    icon: mdi:hand-back-right-outline
+    options:
+      - "Automatik"
+      - "Hand"
+    initial_option: "Automatik"
+    optimistic: true
+    restore_value: true
+
+  # Reihenfolge muss zu "stufen_leistung" passen
+  - platform: template
+    id: handleistung
+    name: "Handleistung"
+    icon: mdi:lightning-bolt
+    options:
+      - "0 W"
+      - "1000 W"
+      - "2000 W"
+      - "3000 W"
+      - "4000 W"
+      - "5000 W"
+      - "6000 W"
+      - "7000 W"
+      - "9000 W"
+    initial_option: "0 W"
+    optimistic: true
+    restore_value: true
+
+number:
+  - platform: template
+    id: max_temperatur
+    name: "Maximaltemperatur"
+    icon: mdi:thermometer-alert
+    entity_category: config
+    unit_of_measurement: "°C"
+    min_value: 20
+    max_value: 95
+    step: 1
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${max_temperatur}
+
+  - platform: template
+    id: temp_hysterese
+    name: "Temperatur-Hysterese"
+    icon: mdi:thermometer-minus
+    entity_category: config
+    unit_of_measurement: "K"
+    min_value: 1
+    max_value: 20
+    step: 0.5
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${temperatur_hysterese}
+
+  - platform: template
+    id: ein_hysterese
+    name: "Einschalthysterese"
+    icon: mdi:arrow-up-bold-outline
+    entity_category: config
+    unit_of_measurement: W
+    min_value: 0
+    max_value: 2000
+    step: 50
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${einschalthysterese}
+
+  - platform: template
+    id: aus_hysterese
+    name: "Ausschalthysterese"
+    icon: mdi:arrow-down-bold-outline
+    entity_category: config
+    unit_of_measurement: W
+    min_value: 0
+    max_value: 2000
+    step: 50
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${ausschalthysterese}
+
+  - platform: template
+    id: ein_verzoegerung
+    name: "Einschaltverzögerung"
+    icon: mdi:timer-plus-outline
+    entity_category: config
+    unit_of_measurement: s
+    # Mindestens 10 s, damit der Messwert nach dem Schalten nachziehen kann
+    min_value: 10
+    max_value: 900
+    step: 5
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${einschaltverzoegerung}
+
+  - platform: template
+    id: aus_verzoegerung
+    name: "Ausschaltverzögerung"
+    icon: mdi:timer-minus-outline
+    entity_category: config
+    unit_of_measurement: s
+    min_value: 10
+    max_value: 900
+    step: 5
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${ausschaltverzoegerung}
+
+# -----------------------------------------------------------------------------
+# Relais schalten
+#
+# Die /N-Relais (K2, K4, K6) schalten ein Elementende zwischen N und einer
+# Phase um. Unter Last könnte der Lichtbogen dabei Phase und N kurzschließen.
+# Deshalb: Ändert sich ein /N-Relais, zuerst alle Phasenrelais (K1, K3, K5)
+# aus, Pause, /N-Relais umschalten, Pause, dann Phasenrelais einschalten.
+# -----------------------------------------------------------------------------
+script:
+  - id: relais_schalten
+    mode: queued
+    max_runs: 5
+    then:
+      - lambda: |-
+          id(schalt_stufe) = id(ziel_stufe);
+      - if:
+          condition:
+            lambda: |-
+              static const char *const MUSTER[] = {${stufen_relais}};
+              const char *m = MUSTER[id(schalt_stufe)];
+              return (m[1] == '1') != id(k2).state ||
+                     (m[3] == '1') != id(k4).state ||
+                     (m[5] == '1') != id(k6).state;
+          then:
+            - lambda: |-
+                ESP_LOGI("heiz", "N-Umschaltung: Phasenrelais aus");
+                id(ist_leistung) = 0;
+            - switch.turn_off: k1
+            - switch.turn_off: k3
+            - switch.turn_off: k5
+            - delay: ${umschaltpause}
+            - lambda: |-
+                static const char *const MUSTER[] = {${stufen_relais}};
+                const char *m = MUSTER[id(schalt_stufe)];
+                if (m[1] == '1') id(k2).turn_on(); else id(k2).turn_off();
+                if (m[3] == '1') id(k4).turn_on(); else id(k4).turn_off();
+                if (m[5] == '1') id(k6).turn_on(); else id(k6).turn_off();
+            - delay: ${umschaltpause}
+      - lambda: |-
+          static const int LEISTUNG[] = {${stufen_leistung}};
+          static const char *const MUSTER[] = {${stufen_relais}};
+          const int s = id(schalt_stufe);
+          const char *m = MUSTER[s];
+          if (m[0] == '1') id(k1).turn_on(); else id(k1).turn_off();
+          if (m[2] == '1') id(k3).turn_on(); else id(k3).turn_off();
+          if (m[4] == '1') id(k5).turn_on(); else id(k5).turn_off();
+          id(ist_stufe) = s;
+          id(ist_leistung) = LEISTUNG[s];
+          id(heizleistung).publish_state(LEISTUNG[s]);
+          ESP_LOGI("heiz", "Heizleistung %d W (Relais %s)", LEISTUNG[s], m);
+
+# -----------------------------------------------------------------------------
+# Regelung (jede Sekunde)
+# -----------------------------------------------------------------------------
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          static const int LEISTUNG[] = {${stufen_leistung}};
+          static const int ANZAHL = sizeof(LEISTUNG) / sizeof(LEISTUNG[0]);
+          const uint32_t jetzt = millis();
+
+          // --- 1. Übertemperatur (gilt in jeder Betriebsart) ---------------
+          const float t = id(temp_max).state;
+          const float t_grenze = id(max_temperatur).state;
+          bool ueber = id(uebertemp);
+          if (std::isnan(t) || t > t_grenze) {
+            ueber = true;  // auch ohne Messwert: sicherheitshalber aus
+          } else if (t <= t_grenze - id(temp_hysterese).state) {
+            ueber = false;
+          }
+          if (ueber != id(uebertemp)) {
+            if (ueber) {
+              ESP_LOGW("heiz", "Abschaltung: Max-Fühler %.1f °C (Grenze %.1f °C)", t, t_grenze);
+            } else {
+              ESP_LOGI("heiz", "Freigabe: Max-Fühler %.1f °C", t);
+            }
+            id(uebertemp) = ueber;
+          }
+
+          // --- 2. Verfügbare Leistung = PV-Überschuss + Heizleistung -------
+          const float s = id(pv_ueberschuss).state;
+          const bool pv_ok = id(api_server).is_connected() && !std::isnan(s);
+          const float verfuegbar = pv_ok ? s + id(ist_leistung) : NAN;
+          id(verfuegbare_leistung) = verfuegbar;
+
+          // --- 3. Zielstufe ------------------------------------------------
+          const bool hand = id(betriebsart).active_index().value_or(0) == 1;
+          int ziel;
+          if (hand) {
+            ziel = id(handleistung).active_index().value_or(0);
+            // Beim Wechsel auf Automatik mit der aktuellen Stufe weitermachen
+            id(auto_stufe) = id(ist_stufe);
+            id(wunsch_richtung) = 0;
+          } else if (ueber) {
+            id(auto_stufe) = 0;
+            id(wunsch_richtung) = 0;
+            ziel = 0;
+          } else {
+            const int n = id(auto_stufe);
+            int z = n;
+            if (!pv_ok) {
+              z = 0;  // keine PV-Daten: (nach Ausschaltverzögerung) aus
+            } else {
+              // Abschalten: unter Stufenleistung minus Ausschalthysterese
+              while (z > 0 && verfuegbar < LEISTUNG[z] - id(aus_hysterese).state) z--;
+              // Zuschalten: höchste Stufe mit Leistung plus Einschalthysterese
+              if (z == n) {
+                for (int k = ANZAHL - 1; k > n; k--) {
+                  if (verfuegbar >= LEISTUNG[k] + id(ein_hysterese).state) {
+                    z = k;
+                    break;
+                  }
+                }
+              }
+            }
+            const int richtung = (z > n) - (z < n);
+            if (richtung == 0) {
+              id(wunsch_richtung) = 0;
+            } else {
+              id(wunsch_stufe) = z;
+              if (richtung != id(wunsch_richtung)) {
+                // Neue Anforderung: Verzögerung starten
+                id(wunsch_richtung) = richtung;
+                id(wunsch_seit) = jetzt;
+              } else {
+                const float verz = richtung > 0 ? id(ein_verzoegerung).state
+                                                : id(aus_verzoegerung).state;
+                if (jetzt - id(wunsch_seit) >= (uint32_t) (verz * 1000.0f)) {
+                  ESP_LOGI("heiz", "Automatik: %d W -> %d W (verfügbar %.0f W)",
+                           LEISTUNG[n], LEISTUNG[z], verfuegbar);
+                  id(auto_stufe) = z;
+                  id(wunsch_richtung) = 0;
+                }
+              }
+            }
+            ziel = id(auto_stufe);
+          }
+          if (ueber) ziel = 0;
+
+          // --- 4. Schalten -------------------------------------------------
+          if (ziel != id(ziel_stufe) ||
+              (!id(relais_schalten).is_running() && ziel != id(ist_stufe))) {
+            id(ziel_stufe) = ziel;
+            id(relais_schalten).execute();
+          }
+
+          // --- 5. Status -----------------------------------------------------
+          char buf[64];
+          if (std::isnan(t)) {
+            snprintf(buf, sizeof(buf), "Aus: Max-Fühler ohne Messwert");
+          } else if (ueber) {
+            snprintf(buf, sizeof(buf), "Übertemperatur %.1f °C", t);
+          } else if (hand) {
+            snprintf(buf, sizeof(buf), "Hand: %d W", LEISTUNG[ziel]);
+          } else if (!pv_ok) {
+            snprintf(buf, sizeof(buf), "Automatik: keine PV-Daten");
+          } else if (id(wunsch_richtung) > 0) {
+            snprintf(buf, sizeof(buf), "Automatik: Zuschalten angefordert");
+          } else if (id(wunsch_richtung) < 0) {
+            snprintf(buf, sizeof(buf), "Automatik: Abschalten angefordert");
+          } else {
+            snprintf(buf, sizeof(buf), "Automatik: %d W", LEISTUNG[ziel]);
+          }
+          if (id(status_str) != buf) {
+            id(status_str) = buf;
+            id(status_text).publish_state(buf);
+          }
+
+# -----------------------------------------------------------------------------
+# Display: ILI9341 2,8" 320x240 (SPI)
+# -----------------------------------------------------------------------------
+spi:
+  clk_pin: ${pin_spi_clk}
+  mosi_pin: ${pin_spi_mosi}
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_xs
+    size: 12
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - file: "gfonts://Roboto"
+    id: font_s
+    size: 15
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 500
+    id: font_m
+    size: 17
+    glyphsets: [GF_Latin_Core]
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: Roboto
+      weight: 700
+    id: font_l
+    size: 40
+    glyphs: "0123456789 -.W"
+
+display:
+  - platform: mipi_spi
+    id: anzeige
+    model: ILI9341
+    cs_pin: ${pin_display_cs}
+    dc_pin: ${pin_display_dc}
+    reset_pin: ${pin_display_reset}
+    rotation: 90
+    update_interval: 1s
+    lambda: |-
+      static const int LEISTUNG[] = {${stufen_leistung}};
+      static const char *const NAMEN[6] = {"L1", "L2/N", "L2", "L3/N", "L3", "L1/N"};
+      const Color WEISS(255, 255, 255), HELL(190, 190, 190), GRAU(110, 110, 110),
+                  DUNKEL(45, 45, 45), ROT(230, 40, 40), BLAU(40, 100, 235),
+                  GRUEN(50, 190, 90), ORANGE(245, 155, 20);
+      // Temperatur -> Farbe (20 °C blau ... 80 °C rot)
+      auto farbe = [](float t) -> Color {
+        float f = (t - 20.0f) / 60.0f;
+        f = f < 0 ? 0 : (f > 1 ? 1 : f);
+        return Color(40 + f * 200, 70 - f * 30, 235 - f * 195);
+      };
+      const bool hand = id(betriebsart).active_index().value_or(0) == 1;
+      const bool ueber = id(uebertemp);
+
+      it.fill(Color::BLACK);
+
+      // Kopfzeile
+      it.filled_rectangle(0, 0, 320, 26, DUNKEL);
+      it.print(8, 13, id(font_m), WEISS, TextAlign::CENTER_LEFT, "Heizpatrone");
+      it.print(312, 13, id(font_m), hand ? ORANGE : GRUEN, TextAlign::CENTER_RIGHT,
+               hand ? "HAND" : "AUTOMATIK");
+
+      // Heizleistung mit Balken (0 ... 9 kW)
+      it.print(8, 32, id(font_s), HELL, TextAlign::TOP_LEFT, "Heizleistung");
+      it.printf(8, 46, id(font_l), WEISS, TextAlign::TOP_LEFT, "%.0f W", id(ist_leistung));
+      const int max_w = LEISTUNG[sizeof(LEISTUNG) / sizeof(LEISTUNG[0]) - 1];
+      it.rectangle(8, 92, 182, 10, GRAU);
+      it.filled_rectangle(9, 93, (int) (id(ist_leistung) / max_w * 180), 8, ueber ? ROT : ORANGE);
+
+      // Relais: rot = ein; /N-Relais blau = aus (Stellung N)
+      const bool rel[6] = {id(k1).state, id(k2).state, id(k3).state,
+                           id(k4).state, id(k5).state, id(k6).state};
+      for (int i = 0; i < 6; i++) {
+        const int x = 22 + i * 31;
+        const bool n_relais = (i % 2) == 1;
+        it.filled_circle(x, 120, 8, rel[i] ? ROT : (n_relais ? BLAU : DUNKEL));
+        it.circle(x, 120, 8, GRAU);
+        it.print(x, 131, id(font_xs), HELL, TextAlign::TOP_CENTER, NAMEN[i]);
+      }
+
+      // PV
+      const float s = id(pv_ueberschuss).state;
+      it.print(8, 154, id(font_s), HELL, TextAlign::TOP_LEFT, "PV-Überschuss");
+      if (std::isnan(s)) {
+        it.print(190, 154, id(font_s), GRAU, TextAlign::TOP_RIGHT, "--");
+      } else {
+        it.printf(190, 154, id(font_s), WEISS, TextAlign::TOP_RIGHT, "%.0f W", s);
+      }
+      it.print(8, 174, id(font_s), HELL, TextAlign::TOP_LEFT, "Verfügbar");
+      if (std::isnan(id(verfuegbare_leistung))) {
+        it.print(190, 174, id(font_s), GRAU, TextAlign::TOP_RIGHT, "--");
+      } else {
+        it.printf(190, 174, id(font_s), WEISS, TextAlign::TOP_RIGHT, "%.0f W",
+                  id(verfuegbare_leistung));
+      }
+      // Countdown der Automatik
+      if (!hand && !ueber && id(wunsch_richtung) != 0) {
+        const float verz = id(wunsch_richtung) > 0 ? id(ein_verzoegerung).state
+                                                   : id(aus_verzoegerung).state;
+        int rest = (int) (verz - (millis() - id(wunsch_seit)) / 1000.0f);
+        if (rest < 0) rest = 0;
+        it.printf(8, 194, id(font_s), ORANGE, TextAlign::TOP_LEFT, "%s %d W in %d s",
+                  id(wunsch_richtung) > 0 ? "Auf" : "Ab", LEISTUNG[id(wunsch_stufe)], rest);
+      }
+
+      // Speicher: 5 Schichten von oben nach unten
+      const float sp[5] = {id(t_speicher_1).state, id(t_speicher_2).state,
+                           id(t_speicher_3).state, id(t_speicher_4).state,
+                           id(t_speicher_5).state};
+      it.print(260, 32, id(font_s), HELL, TextAlign::TOP_CENTER, "Speicher");
+      for (int i = 0; i < 5; i++) {
+        const int y = 52 + i * 24;
+        if (std::isnan(sp[i])) {
+          it.filled_rectangle(206, y, 108, 24, DUNKEL);
+          it.printf(260, y + 12, id(font_s), GRAU, TextAlign::CENTER, "S%d --", i + 1);
+        } else {
+          it.filled_rectangle(206, y, 108, 24, farbe(sp[i]));
+          it.printf(260, y + 12, id(font_s), WEISS, TextAlign::CENTER, "%.1f °C", sp[i]);
+        }
+      }
+      it.rectangle(205, 51, 110, 122, GRAU);
+
+      // Max-Fühler
+      const float t = id(temp_max).state;
+      if (std::isnan(t)) {
+        it.print(260, 178, id(font_s), ROT, TextAlign::TOP_CENTER, "Max --");
+      } else {
+        it.printf(260, 178, id(font_s), ueber ? ROT : WEISS, TextAlign::TOP_CENTER,
+                  "Max %.1f °C", t);
+      }
+      it.printf(260, 196, id(font_xs), HELL, TextAlign::TOP_CENTER, "Grenze %.0f °C",
+                id(max_temperatur).state);
+
+      // Statuszeile
+      it.filled_rectangle(0, 216, 320, 24, ueber ? ROT : DUNKEL);
+      it.print(160, 228, id(font_s), WEISS, TextAlign::CENTER, id(status_str).c_str());
