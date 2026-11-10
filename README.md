@@ -118,7 +118,7 @@ Das Display (2,8", 320 × 240) hat zwei Seiten.
 
 Gedrückte Knöpfe leuchten kurz auf. Zwei Berührungen innerhalb von 0,3 s zählen als eine.
 
-Zeigt dein Display falsche Farben oder ein Negativbild, beim `display:` die Optionen `invert_colors: true` bzw. `color_order: bgr` ergänzen.
+Zeigt dein Display falsche Farben oder ein Negativbild, beim `display:` die Optionen `invert_colors: true` bzw. `color_order: bgr` ergänzen. Steht das Bild auf dem Kopf, `rotation: 270` statt `90` eintragen und danach die Touch-Ausrichtung neu prüfen.
 
 ### Touch kalibrieren
 
@@ -196,15 +196,16 @@ Die Freilaufdioden für die Relaisspulen sind in der ULN2803A eingebaut (Pin 10 
 | Fühler Eingang 2 (Speicher) | GPIO18 | DS18B20 DQ (1–5 parallel), 4,7 kΩ nach 3V3 |
 | SPI SCK | GPIO12 | Display SCK **und** Touch T_CLK |
 | SPI MOSI | GPIO11 | Display SDI (MOSI) **und** Touch T_DIN |
-| SPI MISO | GPIO13 | Display SDO (MISO) **und** Touch T_DO |
+| SPI MISO | GPIO13 | **nur** Touch T_DO (Display-SDO frei lassen, siehe unten) |
 | Display CS | GPIO10 | CS |
 | Display DC | GPIO9 | DC (bzw. RS) |
 | Display RESET | GPIO14 | RESET |
 | Display-Beleuchtung | GPIO21 | LED |
 | Touch CS | GPIO2 | T_CS |
 | Touch IRQ | GPIO1 | T_IRQ |
-| Versorgung | 5V, GND | vom DC/DC-Wandler |
-| Display, Fühler | 3V3, GND | VCC bzw. VDD |
+| Versorgung ESP32-S3 | 5V, GND | vom DC/DC-Wandler |
+| Display VCC | 5V, GND | J1 auf dem Modul offen lassen (siehe unten) |
+| Fühler VDD | 3V3, GND | VDD |
 
 Bewusst **nicht** belegt:
 
@@ -218,7 +219,30 @@ Bewusst **nicht** belegt:
 
 Alle Pins lassen sich oben in der YAML unter `substitutions` ändern.
 
-> **Beleuchtung über GPIO21:** Die üblichen 2,8"-Module haben am LED-Pin einen Transistor, der Pin kann also direkt vom GPIO angesteuert und gedimmt werden. Hängt LED bei deinem Modul direkt an den Leuchtdioden ohne Transistor, LED fest an 3V3 legen. Dann funktioniert alles außer Dimmen und Timeout.
+#### Displaymodul anschließen
+
+Die üblichen 2,8"-Module (ILI9341 mit Touch XPT2046, 14-polige Stiftleiste) haben ein paar Eigenheiten:
+
+| Modul-Pin | Anschluss | Hinweis |
+|-----------|-----------|---------|
+| VCC | 5V | Das Modul hat einen eigenen 3,3-V-Regler, die Lötbrücke **J1 bleibt offen**. Alternativ VCC an 3V3, dann **J1 schließen**. An 3V3 mit offenem J1 läuft das Modul unterversorgt. |
+| GND | GND | |
+| CS | GPIO10 | |
+| RESET | GPIO14 | |
+| DC | GPIO9 | |
+| SDI (MOSI) | GPIO11 | |
+| SCK | GPIO12 | |
+| LED | GPIO21 | Am LED-Pin sitzt ein Transistor, der GPIO kann direkt schalten und dimmen. |
+| **SDO (MISO)** | **frei lassen** | Viele ILI9341 geben die Leitung auch dann nicht frei, wenn sie nicht angesprochen sind, und stören damit den Touch. ESPHome liest vom Display nie etwas. |
+| T_CLK | GPIO12 | zusammen mit SCK |
+| T_CS | GPIO2 | |
+| T_DIN | GPIO11 | zusammen mit SDI (MOSI) |
+| T_DO | GPIO13 | einziges Signal an MISO |
+| T_IRQ | GPIO1 | |
+
+Die Signalleitungen arbeiten in beiden Versorgungsvarianten mit 3,3 V und passen direkt zum ESP32-S3. Die SD-Karten-Pins an der Seite bleiben frei.
+
+Fehlt bei deinem Modul der Transistor am LED-Pin (LED hängt direkt an den Leuchtdioden), LED fest an 3V3 legen. Dann funktioniert alles außer Dimmen und Timeout.
 
 ### Leistungsteil (Prinzip)
 

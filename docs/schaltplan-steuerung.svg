@@ -135,12 +135,15 @@
 <text x="298" y="384" font-size="12" text-anchor="start" font-weight="normal" fill="#000">GPIO18</text>
 <text x="30" y="430" font-size="11" text-anchor="start" font-weight="normal" fill="#666">Fühler: VDD → 3V3, GND → GND, DQ → Bus</text>
 <rect x="30" y="448" width="140" height="226" rx="4" fill="#f4f6f8" stroke="#000" stroke-width="1.6"/>
-<text x="100.0" y="527.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">ILI9341 2,8"</text>
-<text x="100.0" y="542.5" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">320×240, SPI</text>
-<text x="100.0" y="557.5" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">Touch XPT2046</text>
-<text x="100.0" y="572.5" font-size="12" text-anchor="middle" font-weight="normal" fill="#000"></text>
-<text x="100.0" y="587.5" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">VCC → 3V3</text>
-<text x="100.0" y="602.5" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">GND → GND</text>
+<text x="100.0" y="505.0" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">ILI9341 2,8"</text>
+<text x="100.0" y="520.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">320×240, SPI</text>
+<text x="100.0" y="535.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">Touch XPT2046</text>
+<text x="100.0" y="550.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#000"></text>
+<text x="100.0" y="565.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">VCC → 5V (J1 offen)</text>
+<text x="100.0" y="580.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">GND → GND</text>
+<text x="100.0" y="595.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#000"></text>
+<text x="100.0" y="610.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">SDO (MISO):</text>
+<text x="100.0" y="625.0" font-size="12" text-anchor="middle" font-weight="normal" fill="#000">frei lassen!</text>
 <polyline points="170,466 290,466" fill="none" stroke="#000" stroke-width="1.6"/>
 <text x="176" y="462" font-size="11" text-anchor="start" font-weight="normal" fill="#000">SCK + T_CLK</text>
 <text x="298" y="470" font-size="12" text-anchor="start" font-weight="normal" fill="#000">GPIO12</text>
@@ -148,7 +151,7 @@
 <text x="176" y="486" font-size="11" text-anchor="start" font-weight="normal" fill="#000">SDI/MOSI + T_DIN</text>
 <text x="298" y="494" font-size="12" text-anchor="start" font-weight="normal" fill="#000">GPIO11</text>
 <polyline points="170,514 290,514" fill="none" stroke="#000" stroke-width="1.6"/>
-<text x="176" y="510" font-size="11" text-anchor="start" font-weight="normal" fill="#000">SDO/MISO + T_DO</text>
+<text x="176" y="510" font-size="11" text-anchor="start" font-weight="normal" fill="#000">T_DO</text>
 <text x="298" y="518" font-size="12" text-anchor="start" font-weight="normal" fill="#000">GPIO13</text>
 <polyline points="170,538 290,538" fill="none" stroke="#000" stroke-width="1.6"/>
 <text x="176" y="534" font-size="11" text-anchor="start" font-weight="normal" fill="#000">CS</text>
@@ -168,7 +171,7 @@
 <polyline points="170,658 290,658" fill="none" stroke="#000" stroke-width="1.6"/>
 <text x="176" y="654" font-size="11" text-anchor="start" font-weight="normal" fill="#000">T_IRQ</text>
 <text x="298" y="662" font-size="12" text-anchor="start" font-weight="normal" fill="#000">GPIO1</text>
-<text x="30" y="690" font-size="11" text-anchor="start" font-weight="normal" fill="#666">Display und Touch teilen sich den SPI-Bus.</text>
+<text x="30" y="706" font-size="11" text-anchor="start" font-weight="normal" fill="#666">SCK und MOSI gemeinsam, MISO nur vom Touch.</text>
 <text x="298" y="688" font-size="12" text-anchor="start" font-weight="normal" fill="#000">3V3</text>
 <polyline points="290,684 262,684" fill="none" stroke="#000" stroke-width="1.6"/>
 <text x="262" y="678" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">3V3</text>
