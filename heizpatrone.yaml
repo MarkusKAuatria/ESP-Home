@@ -1,5 +1,6 @@
 # =============================================================================
-# ESPHome: Ansteuerung einer Heizpatrone im Pufferspeicher (ESP32 + Display)
+# ESPHome: Ansteuerung einer Heizpatrone im Pufferspeicher
+#          (ESP32-S3 + 2,8"-Touch-Display ILI9341/XPT2046)
 #
 # 6 Relais schalten die 3 Heizelemente der Patrone im Stern (gegen N, ~1 kW)
 # oder im Dreieck (gegen die Nachbarphase, ~3 kW). Daraus ergeben sich die
@@ -13,6 +14,9 @@
 # In beiden Betriebsarten: Überschreitet der Max-Fühler die Maximaltemperatur,
 # werden alle Relais abgeschaltet. Wieder eingeschaltet wird erst, wenn die
 # Temperatur um die Temperatur-Hysterese gefallen ist.
+#
+# Touch-Bedienung am Display: Betriebsart umschalten, Handleistung -/+,
+# Einstellungsseite (Temperatur, Hysteresen, Verzögerungen).
 #
 # SICHERHEIT: Diese Abschaltung ersetzt NICHT den Sicherheitstemperatur-
 # begrenzer (STB) bzw. Thermostat der Heizpatrone!
@@ -45,39 +49,78 @@ substitutions:
   ausschalthysterese: "100"
   einschaltverzoegerung: "60"
   ausschaltverzoegerung: "30"
+  # Display-Beleuchtung aus nach x Minuten ohne Berührung (0 = immer an)
+  display_timeout: "10"
 
-  # GPIOs (ESP32-DevKitC mit ESP32-WROOM-32E) – siehe Schaltungsvorschlag
-  pin_k1_l1: GPIO32
-  pin_k2_l2n: GPIO33
-  pin_k3_l2: GPIO25
-  pin_k4_l3n: GPIO26
-  pin_k5_l3: GPIO27
-  pin_k6_l1n: GPIO13
-  pin_onewire_max: GPIO4
-  pin_onewire_speicher: GPIO16
-  pin_spi_clk: GPIO18
-  pin_spi_mosi: GPIO23
-  pin_display_cs: GPIO21
-  pin_display_dc: GPIO17
-  pin_display_reset: GPIO19
+  # Flash-Größe des ESP32-S3-Moduls (N16R8 = 16MB, N8R8 = 8MB)
+  flash_groesse: 16MB
+
+  # GPIOs (ESP32-S3-DevKitC-1) – siehe Schaltungsvorschlag.
+  # Nicht verwenden: GPIO0/3/45/46 (Boot), 19/20 (USB), 26–37 (Flash/PSRAM),
+  # 38/48 (RGB-LED), 43/44 (UART0).
+  pin_k1_l1: GPIO4
+  pin_k2_l2n: GPIO5
+  pin_k3_l2: GPIO6
+  pin_k4_l3n: GPIO7
+  pin_k5_l3: GPIO15
+  pin_k6_l1n: GPIO16
+  pin_onewire_max: GPIO17
+  pin_onewire_speicher: GPIO18
+  # SPI gemeinsam für Display und Touch
+  pin_spi_clk: GPIO12
+  pin_spi_mosi: GPIO11
+  pin_spi_miso: GPIO13
+  pin_display_cs: GPIO10
+  pin_display_dc: GPIO9
+  pin_display_reset: GPIO14
+  pin_display_led: GPIO21
+  pin_touch_cs: GPIO2
+  pin_touch_irq: GPIO1
+
+  # Touch-Kalibrierung (Rohwerte 0–4095), siehe README "Touch kalibrieren"
+  touch_x_min: "300"
+  touch_x_max: "3800"
+  touch_y_min: "300"
+  touch_y_max: "3800"
+  touch_swap_xy: "true"
+  touch_mirror_x: "false"
+  touch_mirror_y: "false"
+
+  # Layout der Touch-Knöpfe (x, y, Breite, Höhe) – gilt für Anzeige UND
+  # Touch-Auswertung. Normalerweise nicht ändern.
+  knopf_modus: "4, 202, 152, 36"
+  knopf_menue: "164, 202, 152, 36"
+  knopf_hand_minus: "8, 160, 52, 36"
+  knopf_hand_plus: "138, 160, 52, 36"
+  knopf_zurueck: "4, 202, 312, 36"
+  # Einstellungsseite: erste Zeile y, Zeilenhöhe, Minus-x, Plus-x, Knopfbreite
+  einstellungen_layout: "28, 28, 212, 266, 48"
 
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
 
 esp32:
-  board: esp32dev
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: ${flash_groesse}
+
+# PSRAM des N16R8/N8R8 (octal) – für einen flimmerfreien Display-Puffer
+psram:
+  mode: octal
+  speed: 80MHz
 
 logger:
 
 api:
   id: api_server
   encryption:
-    key: !secret api_encryption_key
+    key: !secret api_encryption
 
+# OTA-Updates verschlüsselt mit demselben Schlüssel wie die API
 ota:
   - platform: esphome
-    password: !secret ota_password
+    encryption:
 
 wifi:
   ssid: !secret wifi_ssid
@@ -132,6 +175,21 @@ globals:
   - id: status_str
     type: std::string
     initial_value: '""'
+  # Display-Seite: 0 = Übersicht, 1 = Einstellungen
+  - id: seite
+    type: int
+    initial_value: "0"
+  # Zeitpunkt der letzten Berührung bzw. des letzten Einschaltens (millis)
+  - id: letzte_beruehrung
+    type: uint32_t
+    initial_value: "0"
+  # Zuletzt gedrückter Knopf (für kurzes Hervorheben)
+  - id: gedrueckt
+    type: int
+    initial_value: "-1"
+  - id: gedrueckt_zeit
+    type: uint32_t
+    initial_value: "0"
 
 # -----------------------------------------------------------------------------
 # Temperaturfühler DS18B20 (je Bus ein 4,7-kΩ-Pull-up nach 3,3 V!)
@@ -405,6 +463,40 @@ number:
     restore_value: true
     initial_value: ${ausschaltverzoegerung}
 
+  - platform: template
+    id: display_timeout
+    name: "Display-Timeout"
+    icon: mdi:monitor-off
+    entity_category: config
+    unit_of_measurement: min
+    min_value: 0
+    max_value: 120
+    step: 1
+    mode: box
+    optimistic: true
+    restore_value: true
+    initial_value: ${display_timeout}
+
+# -----------------------------------------------------------------------------
+# Display-Beleuchtung (LED-Pin des Displaymoduls, PWM-dimmbar)
+# -----------------------------------------------------------------------------
+output:
+  - platform: ledc
+    id: display_led_pwm
+    pin: ${pin_display_led}
+
+light:
+  - platform: monochromatic
+    id: hintergrund
+    name: "Display-Beleuchtung"
+    icon: mdi:brightness-6
+    output: display_led_pwm
+    restore_mode: ALWAYS_ON
+    default_transition_length: 300ms
+    # Auch beim Einschalten aus Home Assistant läuft der Timeout neu an
+    on_turn_on:
+      - lambda: "id(letzte_beruehrung) = millis();"
+
 # -----------------------------------------------------------------------------
 # Relais schalten
 #
@@ -455,6 +547,73 @@ script:
           id(ist_leistung) = LEISTUNG[s];
           id(heizleistung).publish_state(LEISTUNG[s]);
           ESP_LOGI("heiz", "Heizleistung %d W (Relais %s)", LEISTUNG[s], m);
+
+  # Auswertung einer Berührung (x, y in Display-Koordinaten 320 x 240)
+  - id: beruehrung
+    parameters:
+      x: int
+      y: int
+    then:
+      - lambda: |-
+          const uint32_t jetzt = millis();
+          if (jetzt - id(letzte_beruehrung) < 300) return;  // entprellen
+          id(letzte_beruehrung) = jetzt;
+
+          // Beleuchtung aus: erste Berührung weckt nur auf
+          if (!id(hintergrund).remote_values.is_on()) {
+            id(hintergrund).turn_on().perform();
+            return;
+          }
+
+          static const int MODUS[4] = {${knopf_modus}};
+          static const int MENUE[4] = {${knopf_menue}};
+          static const int HMINUS[4] = {${knopf_hand_minus}};
+          static const int HPLUS[4] = {${knopf_hand_plus}};
+          static const int ZURUECK[4] = {${knopf_zurueck}};
+          static const int EL[5] = {${einstellungen_layout}};
+          // Trefferfläche etwas größer als der Knopf (resistiver Touch)
+          auto in = [&](const int r[4]) {
+            return x >= r[0] - 4 && x < r[0] + r[2] + 4 && y >= r[1] - 4 && y < r[1] + r[3] + 4;
+          };
+
+          int knopf = -1;
+          if (id(seite) == 0) {
+            const bool hand = id(betriebsart).active_index().value_or(0) == 1;
+            if (in(MODUS)) {
+              knopf = 1;
+              id(betriebsart).make_call().set_option(hand ? "Automatik" : "Hand").perform();
+            } else if (in(MENUE)) {
+              knopf = 2;
+              id(seite) = 1;
+            } else if (hand && in(HMINUS)) {
+              knopf = 3;
+              id(handleistung).make_call().select_previous(false).perform();
+            } else if (hand && in(HPLUS)) {
+              knopf = 4;
+              id(handleistung).make_call().select_next(false).perform();
+            }
+          } else {
+            number::Number *const WERTE[6] = {
+                id(max_temperatur), id(temp_hysterese), id(ein_hysterese),
+                id(aus_hysterese), id(ein_verzoegerung), id(aus_verzoegerung)};
+            if (in(ZURUECK)) {
+              knopf = 5;
+              id(seite) = 0;
+            } else if (y >= EL[0] && y < EL[0] + 6 * EL[1] && x >= EL[2] - 6) {
+              const int zeile = (y - EL[0]) / EL[1];
+              const bool plus = x >= (EL[2] + EL[4] + EL[3]) / 2;
+              auto call = WERTE[zeile]->make_call();
+              if (plus) call.number_increment(false); else call.number_decrement(false);
+              call.perform();
+              knopf = 10 + zeile * 2 + (plus ? 1 : 0);
+            }
+          }
+          if (knopf >= 0) {
+            ESP_LOGD("touch", "Knopf %d (x=%d, y=%d)", knopf, x, y);
+            id(gedrueckt) = knopf;
+            id(gedrueckt_zeit) = jetzt;
+            id(anzeige).update();
+          }
 
 # -----------------------------------------------------------------------------
 # Regelung (jede Sekunde)
@@ -574,12 +733,30 @@ interval:
             id(status_text).publish_state(buf);
           }
 
+  # Display: zurück zur Übersicht und Beleuchtung aus, wenn niemand bedient
+  - interval: 1s
+    then:
+      - lambda: |-
+          const uint32_t ruhe = millis() - id(letzte_beruehrung);
+          if (id(seite) != 0 && ruhe > 60000) {
+            id(seite) = 0;
+          }
+          const bool an = id(hintergrund).remote_values.is_on();
+          if (id(uebertemp)) {
+            // Alarm: Beleuchtung bleibt an
+            if (!an) id(hintergrund).turn_on().perform();
+          } else if (an && id(display_timeout).state > 0 &&
+                     ruhe > (uint32_t) (id(display_timeout).state * 60000.0f)) {
+            id(hintergrund).turn_off().perform();
+          }
+
 # -----------------------------------------------------------------------------
-# Display: ILI9341 2,8" 320x240 (SPI)
+# Display: ILI9341 2,8" 320x240 (SPI) mit zwei Seiten und Touch-Knöpfen
 # -----------------------------------------------------------------------------
 spi:
   clk_pin: ${pin_spi_clk}
   mosi_pin: ${pin_spi_mosi}
+  miso_pin: ${pin_spi_miso}
 
 font:
   - file: "gfonts://Roboto"
@@ -620,32 +797,83 @@ display:
     lambda: |-
       static const int LEISTUNG[] = {${stufen_leistung}};
       static const char *const NAMEN[6] = {"L1", "L2/N", "L2", "L3/N", "L3", "L1/N"};
+      static const int MODUS[4] = {${knopf_modus}};
+      static const int MENUE[4] = {${knopf_menue}};
+      static const int HMINUS[4] = {${knopf_hand_minus}};
+      static const int HPLUS[4] = {${knopf_hand_plus}};
+      static const int ZURUECK[4] = {${knopf_zurueck}};
+      static const int EL[5] = {${einstellungen_layout}};
       const Color WEISS(255, 255, 255), HELL(190, 190, 190), GRAU(110, 110, 110),
                   DUNKEL(45, 45, 45), ROT(230, 40, 40), BLAU(40, 100, 235),
-                  GRUEN(50, 190, 90), ORANGE(245, 155, 20);
+                  GRUEN(40, 150, 75), ORANGE(220, 125, 10), SCHWARZ(0, 0, 0);
       // Temperatur -> Farbe (20 °C blau ... 80 °C rot)
       auto farbe = [](float t) -> Color {
         float f = (t - 20.0f) / 60.0f;
         f = f < 0 ? 0 : (f > 1 ? 1 : f);
         return Color(40 + f * 200, 70 - f * 30, 235 - f * 195);
       };
+      // Knopf zeichnen; kurz nach dem Drücken hell hervorgehoben
+      const uint32_t jetzt = millis();
+      auto ist_gedrueckt = [&](int knopf) {
+        return id(gedrueckt) == knopf && jetzt - id(gedrueckt_zeit) < 400;
+      };
+      auto knopf = [&](const int r[4], Color fuell, bool gedr) -> Color {
+        it.filled_rectangle(r[0], r[1], r[2], r[3], gedr ? HELL : fuell);
+        it.rectangle(r[0], r[1], r[2], r[3], GRAU);
+        return gedr ? SCHWARZ : WEISS;  // Textfarbe
+      };
+      auto minus_plus = [&](int cx, int cy, bool plus, Color c) {
+        it.filled_rectangle(cx - 9, cy - 2, 18, 4, c);
+        if (plus) it.filled_rectangle(cx - 2, cy - 9, 4, 18, c);
+      };
       const bool hand = id(betriebsart).active_index().value_or(0) == 1;
       const bool ueber = id(uebertemp);
 
-      it.fill(Color::BLACK);
+      it.fill(SCHWARZ);
 
-      // Kopfzeile
-      it.filled_rectangle(0, 0, 320, 26, DUNKEL);
-      it.print(8, 13, id(font_m), WEISS, TextAlign::CENTER_LEFT, "Heizpatrone");
-      it.print(312, 13, id(font_m), hand ? ORANGE : GRUEN, TextAlign::CENTER_RIGHT,
-               hand ? "HAND" : "AUTOMATIK");
+      // Statuszeile oben (rot bei Übertemperatur)
+      it.filled_rectangle(0, 0, 320, 24, ueber ? ROT : DUNKEL);
+      if (id(seite) == 1 && !ueber) {
+        it.print(160, 12, id(font_m), WEISS, TextAlign::CENTER, "Einstellungen");
+      } else {
+        it.print(160, 12, id(font_s), WEISS, TextAlign::CENTER, id(status_str).c_str());
+      }
 
+      if (id(seite) == 1) {
+        // ---------------- Seite 2: Einstellungen ----------------
+        static const char *const TEXT[6] = {"Max.-Temperatur", "Temp.-Hysterese",
+                                            "Einschalthyst.", "Ausschalthyst.",
+                                            "Einschaltverz.", "Ausschaltverz."};
+        static const char *const FORMAT[6] = {"%.0f °C", "%.1f K", "%.0f W",
+                                              "%.0f W", "%.0f s", "%.0f s"};
+        const float wert[6] = {id(max_temperatur).state, id(temp_hysterese).state,
+                               id(ein_hysterese).state, id(aus_hysterese).state,
+                               id(ein_verzoegerung).state, id(aus_verzoegerung).state};
+        for (int i = 0; i < 6; i++) {
+          const int y = EL[0] + i * EL[1];
+          it.print(8, y + EL[1] / 2, id(font_s), HELL, TextAlign::CENTER_LEFT, TEXT[i]);
+          it.printf(202, y + EL[1] / 2, id(font_m), WEISS, TextAlign::CENTER_RIGHT,
+                    FORMAT[i], wert[i]);
+          const int rm[4] = {EL[2], y + 2, EL[4], EL[1] - 4};
+          const int rp[4] = {EL[3], y + 2, EL[4], EL[1] - 4};
+          Color c = knopf(rm, DUNKEL, ist_gedrueckt(10 + i * 2));
+          minus_plus(rm[0] + rm[2] / 2, rm[1] + rm[3] / 2, false, c);
+          c = knopf(rp, DUNKEL, ist_gedrueckt(11 + i * 2));
+          minus_plus(rp[0] + rp[2] / 2, rp[1] + rp[3] / 2, true, c);
+        }
+        const Color c = knopf(ZURUECK, DUNKEL, ist_gedrueckt(5));
+        it.print(ZURUECK[0] + ZURUECK[2] / 2, ZURUECK[1] + ZURUECK[3] / 2, id(font_m), c,
+                 TextAlign::CENTER, "Zurück zur Übersicht");
+        return;
+      }
+
+      // ---------------- Seite 1: Übersicht ----------------
       // Heizleistung mit Balken (0 ... 9 kW)
-      it.print(8, 32, id(font_s), HELL, TextAlign::TOP_LEFT, "Heizleistung");
-      it.printf(8, 46, id(font_l), WEISS, TextAlign::TOP_LEFT, "%.0f W", id(ist_leistung));
+      it.print(8, 28, id(font_s), HELL, TextAlign::TOP_LEFT, "Heizleistung");
+      it.printf(8, 42, id(font_l), WEISS, TextAlign::TOP_LEFT, "%.0f W", id(ist_leistung));
       const int max_w = LEISTUNG[sizeof(LEISTUNG) / sizeof(LEISTUNG[0]) - 1];
-      it.rectangle(8, 92, 182, 10, GRAU);
-      it.filled_rectangle(9, 93, (int) (id(ist_leistung) / max_w * 180), 8, ueber ? ROT : ORANGE);
+      it.rectangle(8, 88, 182, 10, GRAU);
+      it.filled_rectangle(9, 89, (int) (id(ist_leistung) / max_w * 180), 8, ueber ? ROT : ORANGE);
 
       // Relais: rot = ein; /N-Relais blau = aus (Stellung N)
       const bool rel[6] = {id(k1).state, id(k2).state, id(k3).state,
@@ -653,43 +881,55 @@ display:
       for (int i = 0; i < 6; i++) {
         const int x = 22 + i * 31;
         const bool n_relais = (i % 2) == 1;
-        it.filled_circle(x, 120, 8, rel[i] ? ROT : (n_relais ? BLAU : DUNKEL));
-        it.circle(x, 120, 8, GRAU);
-        it.print(x, 131, id(font_xs), HELL, TextAlign::TOP_CENTER, NAMEN[i]);
+        it.filled_circle(x, 114, 8, rel[i] ? ROT : (n_relais ? BLAU : DUNKEL));
+        it.circle(x, 114, 8, GRAU);
+        it.print(x, 125, id(font_xs), HELL, TextAlign::TOP_CENTER, NAMEN[i]);
       }
 
-      // PV
-      const float s = id(pv_ueberschuss).state;
-      it.print(8, 154, id(font_s), HELL, TextAlign::TOP_LEFT, "PV-Überschuss");
-      if (std::isnan(s)) {
-        it.print(190, 154, id(font_s), GRAU, TextAlign::TOP_RIGHT, "--");
+      if (hand) {
+        // Handleistung mit - / + Knöpfen
+        it.print(8, 142, id(font_s), HELL, TextAlign::TOP_LEFT, "Handleistung");
+        const int h = id(handleistung).active_index().value_or(0);
+        it.printf(99, HMINUS[1] + HMINUS[3] / 2, id(font_m), WEISS, TextAlign::CENTER,
+                  "%d W", LEISTUNG[h]);
+        Color c = knopf(HMINUS, DUNKEL, ist_gedrueckt(3));
+        minus_plus(HMINUS[0] + HMINUS[2] / 2, HMINUS[1] + HMINUS[3] / 2, false, c);
+        c = knopf(HPLUS, DUNKEL, ist_gedrueckt(4));
+        minus_plus(HPLUS[0] + HPLUS[2] / 2, HPLUS[1] + HPLUS[3] / 2, true, c);
       } else {
-        it.printf(190, 154, id(font_s), WEISS, TextAlign::TOP_RIGHT, "%.0f W", s);
-      }
-      it.print(8, 174, id(font_s), HELL, TextAlign::TOP_LEFT, "Verfügbar");
-      if (std::isnan(id(verfuegbare_leistung))) {
-        it.print(190, 174, id(font_s), GRAU, TextAlign::TOP_RIGHT, "--");
-      } else {
-        it.printf(190, 174, id(font_s), WEISS, TextAlign::TOP_RIGHT, "%.0f W",
-                  id(verfuegbare_leistung));
-      }
-      // Countdown der Automatik
-      if (!hand && !ueber && id(wunsch_richtung) != 0) {
-        const float verz = id(wunsch_richtung) > 0 ? id(ein_verzoegerung).state
-                                                   : id(aus_verzoegerung).state;
-        int rest = (int) (verz - (millis() - id(wunsch_seit)) / 1000.0f);
-        if (rest < 0) rest = 0;
-        it.printf(8, 194, id(font_s), ORANGE, TextAlign::TOP_LEFT, "%s %d W in %d s",
-                  id(wunsch_richtung) > 0 ? "Auf" : "Ab", LEISTUNG[id(wunsch_stufe)], rest);
+        // PV
+        const float s = id(pv_ueberschuss).state;
+        it.print(8, 142, id(font_s), HELL, TextAlign::TOP_LEFT, "PV-Überschuss");
+        if (std::isnan(s)) {
+          it.print(190, 142, id(font_s), GRAU, TextAlign::TOP_RIGHT, "--");
+        } else {
+          it.printf(190, 142, id(font_s), WEISS, TextAlign::TOP_RIGHT, "%.0f W", s);
+        }
+        it.print(8, 160, id(font_s), HELL, TextAlign::TOP_LEFT, "Verfügbar");
+        if (std::isnan(id(verfuegbare_leistung))) {
+          it.print(190, 160, id(font_s), GRAU, TextAlign::TOP_RIGHT, "--");
+        } else {
+          it.printf(190, 160, id(font_s), WEISS, TextAlign::TOP_RIGHT, "%.0f W",
+                    id(verfuegbare_leistung));
+        }
+        // Countdown der Automatik
+        if (!ueber && id(wunsch_richtung) != 0) {
+          const float verz = id(wunsch_richtung) > 0 ? id(ein_verzoegerung).state
+                                                     : id(aus_verzoegerung).state;
+          int rest = (int) (verz - (jetzt - id(wunsch_seit)) / 1000.0f);
+          if (rest < 0) rest = 0;
+          it.printf(8, 178, id(font_s), ORANGE, TextAlign::TOP_LEFT, "%s %d W in %d s",
+                    id(wunsch_richtung) > 0 ? "Auf" : "Ab", LEISTUNG[id(wunsch_stufe)], rest);
+        }
       }
 
       // Speicher: 5 Schichten von oben nach unten
       const float sp[5] = {id(t_speicher_1).state, id(t_speicher_2).state,
                            id(t_speicher_3).state, id(t_speicher_4).state,
                            id(t_speicher_5).state};
-      it.print(260, 32, id(font_s), HELL, TextAlign::TOP_CENTER, "Speicher");
+      it.print(260, 28, id(font_s), HELL, TextAlign::TOP_CENTER, "Speicher");
       for (int i = 0; i < 5; i++) {
-        const int y = 52 + i * 24;
+        const int y = 46 + i * 24;
         if (std::isnan(sp[i])) {
           it.filled_rectangle(206, y, 108, 24, DUNKEL);
           it.printf(260, y + 12, id(font_s), GRAU, TextAlign::CENTER, "S%d --", i + 1);
@@ -698,19 +938,55 @@ display:
           it.printf(260, y + 12, id(font_s), WEISS, TextAlign::CENTER, "%.1f °C", sp[i]);
         }
       }
-      it.rectangle(205, 51, 110, 122, GRAU);
+      it.rectangle(205, 45, 110, 122, GRAU);
 
       // Max-Fühler
       const float t = id(temp_max).state;
       if (std::isnan(t)) {
-        it.print(260, 178, id(font_s), ROT, TextAlign::TOP_CENTER, "Max --");
+        it.print(260, 169, id(font_s), ROT, TextAlign::TOP_CENTER, "Max --");
       } else {
-        it.printf(260, 178, id(font_s), ueber ? ROT : WEISS, TextAlign::TOP_CENTER,
+        it.printf(260, 169, id(font_s), ueber ? ROT : WEISS, TextAlign::TOP_CENTER,
                   "Max %.1f °C", t);
       }
-      it.printf(260, 196, id(font_xs), HELL, TextAlign::TOP_CENTER, "Grenze %.0f °C",
+      it.printf(260, 186, id(font_xs), HELL, TextAlign::TOP_CENTER, "Grenze %.0f °C",
                 id(max_temperatur).state);
 
-      // Statuszeile
-      it.filled_rectangle(0, 216, 320, 24, ueber ? ROT : DUNKEL);
-      it.print(160, 228, id(font_s), WEISS, TextAlign::CENTER, id(status_str).c_str());
+      // Knöpfe unten
+      Color c = knopf(MODUS, hand ? ORANGE : GRUEN, ist_gedrueckt(1));
+      it.print(MODUS[0] + MODUS[2] / 2, MODUS[1] + MODUS[3] / 2, id(font_m), c,
+               TextAlign::CENTER, hand ? "Modus: Hand" : "Modus: Automatik");
+      c = knopf(MENUE, DUNKEL, ist_gedrueckt(2));
+      it.print(MENUE[0] + MENUE[2] / 2, MENUE[1] + MENUE[3] / 2, id(font_m), c,
+               TextAlign::CENTER, "Einstellungen");
+
+# -----------------------------------------------------------------------------
+# Touch: XPT2046 (resistiv) am selben SPI-Bus wie das Display
+# -----------------------------------------------------------------------------
+touchscreen:
+  - platform: xpt2046
+    id: touch
+    display: anzeige
+    cs_pin: ${pin_touch_cs}
+    interrupt_pin:
+      number: ${pin_touch_irq}
+      mode:
+        input: true
+        pullup: true
+    threshold: 400
+    calibration:
+      x_min: ${touch_x_min}
+      x_max: ${touch_x_max}
+      y_min: ${touch_y_min}
+      y_max: ${touch_y_max}
+    transform:
+      swap_xy: ${touch_swap_xy}
+      mirror_x: ${touch_mirror_x}
+      mirror_y: ${touch_mirror_y}
+    on_touch:
+      - lambda: |-
+          // Für die Kalibrierung: Rohwerte im Log
+          ESP_LOGI("touch", "x=%d y=%d (roh x=%d y=%d)", touch.x, touch.y, touch.x_raw, touch.y_raw);
+      - script.execute:
+          id: beruehrung
+          x: !lambda "return touch.x;"
+          y: !lambda "return touch.y;"
