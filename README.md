@@ -124,7 +124,7 @@ Zeigt dein Display falsche Farben oder ein Negativbild, beim `display:` die Opti
 
 Der resistive Touch (XPT2046) muss einmal auf das eigene Display abgestimmt werden. Die Werte stehen oben in der YAML unter `touch_…`.
 
-1. Flashen und das Log öffnen (`esphome logs heizpatrone.yaml`). Jede Berührung erscheint dort als `x=… y=… (roh x=… y=…)`.
+1. Flashen und das Log öffnen (`esphome logs heizpatrone.yaml`, über WLAN oder per Kabel am Anschluss **USB**). Jede Berührung erscheint dort als `x=… y=… (roh x=… y=…)`.
 2. Nacheinander **ganz links, ganz rechts, ganz oben und ganz unten** an den Rand tippen und die **Rohwerte** notieren.
 3. Kleinster und größter Roh-x-Wert → `touch_x_min` / `touch_x_max`; dasselbe für y.
 4. Prüfen, ob die Richtung stimmt:
@@ -138,24 +138,33 @@ Der resistive Touch (XPT2046) muss einmal auf das eigene Display abgestimmt werd
 
 ### ESP32-Empfehlung
 
-**ESP32-S3-DevKitC-1-N16R8** (Espressif, 16 MB Flash, 8 MB PSRAM) mit **2,8"-TFT ILI9341 mit Touch (SPI, XPT2046)**.
+**ESP32-S3-DevKitC-1-N16R8** von Espressif (Modul ESP32-S3-WROOM-1, 16 MB Flash, 8 MB Octal-PSRAM) mit **2,8"-TFT ILI9341 mit Touch (SPI, XPT2046)**.
 
-- Genug freie GPIOs für 6 Relais, 2 Fühlerbusse, Display, Touch und Beleuchtung, ohne Boot- oder USB-Pins
+- Aktuelle Variante laut Espressif, die Konfiguration ist genau darauf eingestellt.
+- Genug freie GPIOs für 6 Relais, 2 Fühlerbusse, Display, Touch und Beleuchtung, ohne Boot- oder USB-Pins.
 - **PSRAM:** Das ganze Bild wird im Speicher aufgebaut und in einem Zug übertragen. Kein Flackern, schnelle Reaktion auf Touch.
-- **USB:** direkt am Board, zum Flashen und für Logs
-- Von ESPHome voll unterstützt, günstig, überall erhältlich
+- Von ESPHome voll unterstützt.
 
-Andere S3-Varianten gehen auch. Dann in der YAML anpassen:
-- **N8R8:** `flash_groesse: 8MB`
-- **N8R2:** zusätzlich bei `psram:` `mode: quad`
+**Im Metall-Schaltschrank** kommt das WLAN mit der Leiterplattenantenne oft nicht zuverlässig durch. Dann besser die Variante **ESP32-S3-DevKitC-1U-N16R8** mit Anschluss für eine externe Antenne nehmen und die Antenne außen am Schrank montieren. Die Konfiguration bleibt gleich.
 
-Ohne PSRAM läuft das Display ebenfalls, ESPHome zeichnet es dann in Teilen.
+**USB:** Das Board hat zwei Anschlüsse, **UART** und **USB**. Flashen geht über beide. Das Log gibt ESPHome per Kabel aber nur am Anschluss **USB** aus; über WLAN geht es unabhängig davon.
+
+**Andere Varianten:** In der aktuellen Bestellliste von Espressif sind N8 und N8R2 als abgekündigt markiert, N8R8 steht gar nicht mehr darin. Wer schon so ein Board hat, kann es weiter verwenden und passt die YAML an:
+
+| Board | Anpassung in der YAML |
+|-------|-----------------------|
+| N8R8 | `flash_groesse: 8MB` |
+| N8R2 | `flash_groesse: 8MB`, bei `psram:` `mode: quad` |
+| N8 (ohne PSRAM) | `flash_groesse: 8MB`, den Block `psram:` löschen. ESPHome zeichnet das Display dann in Teilen. |
+| N32R16V (Modul WROOM-2, Octal-Flash, 1,8 V) | nicht getestet, nicht empfohlen |
+
+Den Block `psram:` nur löschen, wenn wirklich kein PSRAM da ist. Steht er in der YAML, legt ESPHome den ganzen Bildpuffer an und erwartet dafür PSRAM.
 
 ### Stückliste (Vorschlag)
 
 | Anzahl | Teil |
 |-------:|------|
-| 1 | ESP32-S3-DevKitC-1-N16R8 |
+| 1 | ESP32-S3-DevKitC-1-N16R8 (im Metallschrank: ESP32-S3-DevKitC-1U-N16R8 mit externer Antenne) |
 | 1 | TFT 2,8" ILI9341 mit Touch (XPT2046), SPI, 320 × 240 |
 | 1 | ULN2803A (Darlington-Treiber, 8 Kanäle) |
 | 6 | Koppelrelais 12 V DC, 1 Wechsler, 250 V~ / ≥ 6 A (z. B. Finder Serie 38, Hutschiene) |
@@ -267,7 +276,7 @@ Fehlt bei deinem Modul der Transistor am LED-Pin (LED hängt direkt an den Leuch
    ```bash
    esphome run heizpatrone.yaml
    ```
-   Danach geht es auch über WLAN. Benötigt eine aktuelle ESPHome-Version (getestet mit 2026.10); ältere Versionen kennen `encryption` bei `ota` noch nicht.
+   Flashen geht über beide USB-Anschlüsse, das Log per Kabel nur über **USB**. Danach geht beides auch über WLAN. Benötigt eine aktuelle ESPHome-Version (getestet mit 2026.10); ältere Versionen kennen `encryption` bei `ota` noch nicht.
 4. **Touch kalibrieren**, siehe oben.
 5. **Speicherfühler zuordnen:**
    - Im Log stehen beim Start die gefundenen Adressen je Bus.

@@ -52,7 +52,7 @@ substitutions:
   # Display-Beleuchtung aus nach x Minuten ohne Berührung (0 = immer an)
   display_timeout: "10"
 
-  # Flash-Größe des ESP32-S3-Moduls (N16R8 = 16MB, N8R8 = 8MB)
+  # Flash-Größe des ESP32-S3-Moduls (N16R8 = 16MB; ältere N8/N8R2/N8R8 = 8MB)
   flash_groesse: 16MB
 
   # GPIOs (ESP32-S3-DevKitC-1) – siehe Schaltungsvorschlag.
@@ -106,7 +106,8 @@ esp32:
   variant: esp32s3
   flash_size: ${flash_groesse}
 
-# PSRAM des N16R8/N8R8 (octal) – für einen flimmerfreien Display-Puffer
+# PSRAM des N16R8 (octal) – für einen flimmerfreien Display-Puffer.
+# N8R2: mode: quad. Board ohne PSRAM (N8): diesen Block löschen.
 psram:
   mode: octal
   speed: 80MHz
