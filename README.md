@@ -1,8 +1,8 @@
-# ESPHome: Heizpatrone im Pufferspeicher (ESP32 + Display)
+# ESPHome: Heizpatrone im Pufferspeicher (ESP32-S3 + Touch-Display)
 
-Die Konfiguration [`heizpatrone.yaml`](heizpatrone.yaml) steuert eine 9-kW-Heizpatrone in 1-kW-Stufen über 6 Relais. Sie läuft auf einem ESP32 mit Farbdisplay, nutzt den PV-Überschuss aus Home Assistant und schaltet bei Übertemperatur ab.
+Die Konfiguration [`heizpatrone.yaml`](heizpatrone.yaml) steuert eine 9-kW-Heizpatrone in 1-kW-Stufen über 6 Relais. Sie läuft auf einem ESP32-S3 mit 2,8"-Touch-Display, nutzt den PV-Überschuss aus Home Assistant und schaltet bei Übertemperatur ab. Am Display lassen sich Betriebsart, Handleistung und alle Parameter per Touch bedienen.
 
-![Display: Automatik, Übertemperatur, Handbetrieb](docs/display-vorschau.png)
+![Display: Handbetrieb, Einstellungen, Automatik, Übertemperatur](docs/display-vorschau.png)
 
 ## Leistungsstufen
 
@@ -59,7 +59,7 @@ Beispiel mit Standardwerten für die 4-kW-Stufe: ein ab **4100 W** verfügbar, a
 
 ### Handbetrieb
 
-Die Leistung wird über die Entität **Handleistung** vorgegeben (0 … 9000 W) und sofort geschaltet. Die Übertemperatur-Abschaltung gilt weiterhin. Der Handbetrieb läuft auch ohne Verbindung zu Home Assistant weiter. Beim Wechsel zurück auf Automatik regelt diese ab der aktuellen Stufe weiter.
+Die Leistung wird über die Entität **Handleistung** oder am Display mit **−/+** vorgegeben (0 … 9000 W) und sofort geschaltet. Die Übertemperatur-Abschaltung gilt weiterhin. Der Handbetrieb läuft auch ohne Verbindung zu Home Assistant weiter. Beim Wechsel zurück auf Automatik regelt diese ab der aktuellen Stufe weiter.
 
 ## Maximaltemperatur
 
@@ -86,41 +86,77 @@ Die Leistung wird über die Entität **Handleistung** vorgegeben (0 … 9000 W) 
 | **Maximaltemperatur**, **Temperatur-Hysterese** | Einstellung | Übertemperatur-Abschaltung |
 | **Einschalthysterese**, **Ausschalthysterese** | Einstellung | Automatik |
 | **Einschaltverzögerung**, **Ausschaltverzögerung** | Einstellung | Automatik (10–900 s) |
+| **Display-Beleuchtung** | Licht | Hintergrundbeleuchtung, dimmbar |
+| **Display-Timeout** | Einstellung | Beleuchtung aus nach x Minuten ohne Berührung (0 = immer an) |
 
 Einstellungen, Betriebsart und Handleistung bleiben nach einem Neustart erhalten. Die Werte unter `substitutions` sind nur die Startwerte beim ersten Flashen.
 
-## Display
+## Display und Touch-Bedienung
 
-Das Display (2,8", 320 × 240) zeigt:
+Das Display (2,8", 320 × 240) hat zwei Seiten.
 
-- **Kopfzeile:** Betriebsart (grün AUTOMATIK, orange HAND)
+**Übersicht**
+- **Statuszeile oben:** z. B. „Automatik: 4000 W“, bei Übertemperatur rot
 - **Heizleistung:** groß, mit Balken
 - **Relais:** wie die LEDs im Schaltschrank, rot = ein, /N-Relais blau = aus
-- **PV:** PV-Überschuss und verfügbare Leistung, in Automatik mit Countdown bis zur nächsten Umschaltung
+- **Automatik:** PV-Überschuss und verfügbare Leistung, mit Countdown bis zur nächsten Umschaltung
+- **Handbetrieb:** stattdessen die Handleistung mit Knöpfen **−** und **+**
 - **Speicher:** bis zu 5 Schichten, farbig von blau (kalt) bis rot (heiß); nicht vorhandene Fühler grau
 - **Max-Fühler:** Messwert und Grenze
-- **Statuszeile:** bei Übertemperatur rot
+- **Knopf „Modus“:** wechselt zwischen Automatik (grün) und Hand (orange)
+- **Knopf „Einstellungen“:** öffnet die zweite Seite
+
+**Einstellungen**
+- Maximaltemperatur, Temperatur-Hysterese, Ein- und Ausschalthysterese, Ein- und Ausschaltverzögerung, jeweils mit **−** und **+**
+- Die Werte sind dieselben wie in Home Assistant und bleiben gespeichert.
+- „Zurück zur Übersicht“, oder automatisch nach 60 s ohne Berührung
+
+**Beleuchtung**
+- Geht nach dem **Display-Timeout** aus (Standard 10 min, 0 = immer an).
+- Die erste Berührung schaltet sie nur ein und löst noch keine Aktion aus.
+- Bei Übertemperatur bleibt sie an.
+
+Gedrückte Knöpfe leuchten kurz auf. Zwei Berührungen innerhalb von 0,3 s zählen als eine.
 
 Zeigt dein Display falsche Farben oder ein Negativbild, beim `display:` die Optionen `invert_colors: true` bzw. `color_order: bgr` ergänzen.
+
+### Touch kalibrieren
+
+Der resistive Touch (XPT2046) muss einmal auf das eigene Display abgestimmt werden. Die Werte stehen oben in der YAML unter `touch_…`.
+
+1. Flashen und das Log öffnen (`esphome logs heizpatrone.yaml`). Jede Berührung erscheint dort als `x=… y=… (roh x=… y=…)`.
+2. Nacheinander **ganz links, ganz rechts, ganz oben und ganz unten** an den Rand tippen und die **Rohwerte** notieren.
+3. Kleinster und größter Roh-x-Wert → `touch_x_min` / `touch_x_max`; dasselbe für y.
+4. Prüfen, ob die Richtung stimmt:
+   - **Achsen vertauscht** (nach rechts tippen ändert vor allem y): `touch_swap_xy` umstellen und Schritt 2 wiederholen.
+   - **x gespiegelt** (Roh-x wird nach rechts *kleiner*): `touch_mirror_x: "true"`.
+   - **y gespiegelt** (Roh-y wird nach unten *kleiner*): `touch_mirror_y: "true"`.
+   - `min` muss immer kleiner als `max` sein, auch bei gespiegelter Achse.
+5. Neu flashen. Die angezeigten `x`/`y` sollten jetzt etwa 0–320 bzw. 0–240 ergeben, und die Knöpfe reagieren dort, wo man tippt.
 
 ## Hardware
 
 ### ESP32-Empfehlung
 
-**ESP32-DevKitC-32E** (Espressif, ESP32-WROOM-32E, 4 MB Flash) mit **2,8"-TFT ILI9341 (SPI, 320 × 240)**.
+**ESP32-S3-DevKitC-1-N16R8** (Espressif, 16 MB Flash, 8 MB PSRAM) mit **2,8"-TFT ILI9341 mit Touch (SPI, XPT2046)**.
 
-- Genug freie GPIOs für 6 Relais, 2 Fühlerbusse und das Display, ohne kritische Boot-Pins
+- Genug freie GPIOs für 6 Relais, 2 Fühlerbusse, Display, Touch und Beleuchtung, ohne Boot- oder USB-Pins
+- **PSRAM:** Das ganze Bild wird im Speicher aufgebaut und in einem Zug übertragen. Kein Flackern, schnelle Reaktion auf Touch.
+- **USB:** direkt am Board, zum Flashen und für Logs
 - Von ESPHome voll unterstützt, günstig, überall erhältlich
-- Das ILI9341-Display ist gut ablesbar, läuft an 3,3 V und braucht keinen Touch
 
-Wer lieber ein Board mit eingebautem Display nimmt (z. B. „Cheap Yellow Display“ ESP32-2432S028), hat zu wenige freie GPIOs für 6 Relais und bräuchte zusätzlich einen I/O-Expander.
+Andere S3-Varianten gehen auch. Dann in der YAML anpassen:
+- **N8R8:** `flash_groesse: 8MB`
+- **N8R2:** zusätzlich bei `psram:` `mode: quad`
+
+Ohne PSRAM läuft das Display ebenfalls, ESPHome zeichnet es dann in Teilen.
 
 ### Stückliste (Vorschlag)
 
 | Anzahl | Teil |
 |-------:|------|
-| 1 | ESP32-DevKitC-32E |
-| 1 | TFT 2,8" ILI9341, SPI, 320 × 240 |
+| 1 | ESP32-S3-DevKitC-1-N16R8 |
+| 1 | TFT 2,8" ILI9341 mit Touch (XPT2046), SPI, 320 × 240 |
 | 1 | ULN2803A (Darlington-Treiber, 8 Kanäle) |
 | 6 | Koppelrelais 12 V DC, 1 Wechsler, 250 V~ / ≥ 6 A (z. B. Finder Serie 38, Hutschiene) |
 | 6 | Installationsschütz 230-V-Spule, passend zur Patrone (z. B. 20/25 A); **Q2, Q4, Q6 mit 1 Schließer + 1 Öffner** |
@@ -136,7 +172,7 @@ Wer lieber ein Board mit eingebautem Display nimmt (z. B. „Cheap Yellow Displa
 ![Schaltungsvorschlag Steuerung](docs/schaltplan-steuerung.svg)
 
 **Signalweg:**
-1. Der ESP32 steuert über eine **ULN2803A** die Spulen von 6 **Koppelrelais (12 V)**. GPIO high bedeutet Relais ein.
+1. Der ESP32-S3 steuert über eine **ULN2803A** die Spulen von 6 **Koppelrelais (12 V)**. GPIO high bedeutet Relais ein.
 2. Die Kontakte der Koppelrelais schalten die 230-V-Spulen der **Schütze Q1–Q6**.
 3. Die Schütze schalten die Heizelemente.
 
@@ -146,27 +182,43 @@ Die Freilaufdioden für die Relaisspulen sind in der ULN2803A eingebaut (Pin 10 
 - **Typ A (K1, K3, K5):** Rote LED mit 1 kΩ parallel zur Spule, leuchtet bei *ein*.
 - **Typ B (K2, K4, K6):** Rote LED wie Typ A. Zusätzlich eine blaue LED über einen Transistor-Inverter (BC547). Sie leuchtet, solange der ULN-Ausgang sperrt, also bei *aus* (Stellung N). Der Spannungsteiler 47 kΩ / 10 kΩ belastet die Spule dabei nur mit etwa 0,2 mA, das Relais bleibt sicher abgefallen.
 
-**Belegung:**
+**Belegung (ESP32-S3-DevKitC-1):**
 
-| Funktion | ESP32 | Anschluss |
-|----------|-------|-----------|
-| K1 L1 | GPIO32 | ULN2803A IN1 |
-| K2 L2/N | GPIO33 | ULN2803A IN2 |
-| K3 L2 | GPIO25 | ULN2803A IN3 |
-| K4 L3/N | GPIO26 | ULN2803A IN4 |
-| K5 L3 | GPIO27 | ULN2803A IN5 |
-| K6 L1/N | GPIO13 | ULN2803A IN6 |
-| Fühler Eingang 1 (Max) | GPIO4 | DS18B20 DQ, 4,7 kΩ nach 3V3 |
-| Fühler Eingang 2 (Speicher) | GPIO16 | DS18B20 DQ (1–5 parallel), 4,7 kΩ nach 3V3 |
-| Display SCK | GPIO18 | SCK |
-| Display MOSI | GPIO23 | SDI (MOSI) |
-| Display CS | GPIO21 | CS |
-| Display DC | GPIO17 | DC |
-| Display RESET | GPIO19 | RESET |
+| Funktion | ESP32-S3 | Anschluss |
+|----------|----------|-----------|
+| K1 L1 | GPIO4 | ULN2803A IN1 |
+| K2 L2/N | GPIO5 | ULN2803A IN2 |
+| K3 L2 | GPIO6 | ULN2803A IN3 |
+| K4 L3/N | GPIO7 | ULN2803A IN4 |
+| K5 L3 | GPIO15 | ULN2803A IN5 |
+| K6 L1/N | GPIO16 | ULN2803A IN6 |
+| Fühler Eingang 1 (Max) | GPIO17 | DS18B20 DQ, 4,7 kΩ nach 3V3 |
+| Fühler Eingang 2 (Speicher) | GPIO18 | DS18B20 DQ (1–5 parallel), 4,7 kΩ nach 3V3 |
+| SPI SCK | GPIO12 | Display SCK **und** Touch T_CLK |
+| SPI MOSI | GPIO11 | Display SDI (MOSI) **und** Touch T_DIN |
+| SPI MISO | GPIO13 | Display SDO (MISO) **und** Touch T_DO |
+| Display CS | GPIO10 | CS |
+| Display DC | GPIO9 | DC (bzw. RS) |
+| Display RESET | GPIO14 | RESET |
+| Display-Beleuchtung | GPIO21 | LED |
+| Touch CS | GPIO2 | T_CS |
+| Touch IRQ | GPIO1 | T_IRQ |
 | Versorgung | 5V, GND | vom DC/DC-Wandler |
-| Display, Fühler | 3V3, GND | VCC / LED bzw. VDD |
+| Display, Fühler | 3V3, GND | VCC bzw. VDD |
+
+Bewusst **nicht** belegt:
+
+| GPIO | Grund |
+|------|-------|
+| 0, 3, 45, 46 | Boot |
+| 19, 20 | USB |
+| 26–37 | Flash/PSRAM |
+| 38, 48 | RGB-LED des Boards |
+| 43, 44 | UART |
 
 Alle Pins lassen sich oben in der YAML unter `substitutions` ändern.
+
+> **Beleuchtung über GPIO21:** Die üblichen 2,8"-Module haben am LED-Pin einen Transistor, der Pin kann also direkt vom GPIO angesteuert und gedimmt werden. Hängt LED bei deinem Modul direkt an den Leuchtdioden ohne Transistor, LED fest an 3V3 legen. Dann funktioniert alles außer Dimmen und Timeout.
 
 ### Leistungsteil (Prinzip)
 
@@ -176,17 +228,29 @@ Alle Pins lassen sich oben in der YAML unter `substitutions` ändern.
 
 ## Einrichtung
 
-1. `secrets.yaml.example` nach `secrets.yaml` kopieren und WLAN, Passwörter und API-Schlüssel eintragen (Schlüssel z. B. mit `openssl rand -base64 32` erzeugen).
+1. `secrets.yaml.example` nach `secrets.yaml` kopieren und eintragen:
+
+   | Schlüssel | Inhalt |
+   |-----------|--------|
+   | `wifi_ssid` | Name des WLANs |
+   | `wifi_password` | WLAN-Passwort |
+   | `api_encryption` | API-Schlüssel, z. B. mit `openssl rand -base64 32` erzeugen; wird auch für verschlüsselte OTA-Updates verwendet |
+   | `fallback_ap_password` | Passwort des Notfall-Hotspots (mind. 8 Zeichen) |
+
 2. Unter `substitutions` bei `pv_sensor` die Entität deines PV-Überschuss-Sensors eintragen.
    - Ist bei deinem Sensor die Einspeisung **negativ**: beim `homeassistant`-Sensor den Filter `multiply: -1` einkommentieren.
 3. Erstes Flashen per USB:
    ```bash
    esphome run heizpatrone.yaml
    ```
-   Danach geht es auch über WLAN.
-4. **Speicherfühler zuordnen:** Im Log stehen beim Start die gefundenen Adressen je Bus. Bei den Sensoren `Speicher 1 … 5` jeweils `index: X` durch `address: 0x…` ersetzen, sodass *Speicher 1* der oberste Fühler ist. Nicht vorhandene Fühler aus der YAML löschen.
-5. **Erst ohne Leistungsteil testen:**
-   - Mit abgeklemmten Schützen im Handbetrieb alle Stufen durchschalten.
+   Danach geht es auch über WLAN. Benötigt eine aktuelle ESPHome-Version (getestet mit 2026.10); ältere Versionen kennen `encryption` bei `ota` noch nicht.
+4. **Touch kalibrieren**, siehe oben.
+5. **Speicherfühler zuordnen:**
+   - Im Log stehen beim Start die gefundenen Adressen je Bus.
+   - Bei den Sensoren `Speicher 1 … 5` jeweils `index: X` durch `address: 0x…` ersetzen, sodass *Speicher 1* der oberste Fühler ist.
+   - Nicht vorhandene Fühler aus der YAML löschen.
+6. **Erst ohne Leistungsteil testen:**
+   - Mit abgeklemmten Schützen im Handbetrieb alle Stufen durchschalten (am Display mit −/+).
    - Relais und LEDs mit der Tabelle oben vergleichen.
    - Bei Stufenwechseln mit K2/K4/K6 auf die Pausen achten.
 
@@ -197,5 +261,8 @@ Unter `substitutions` in der YAML:
 - `pv_sensor`: Entität des PV-Überschuss-Sensors
 - `stufen_leistung`, `stufen_relais`: Leistungsstufen und Relaismuster (Reihenfolge K1 … K6). Bei Änderungen auch die Optionen von *Handleistung* anpassen.
 - `umschaltpause`: Pause beim Umschalten der /N-Relais (Standard 500 ms)
-- Startwerte: `max_temperatur`, `temperatur_hysterese`, `einschalthysterese`, `ausschalthysterese`, `einschaltverzoegerung`, `ausschaltverzoegerung`
+- Startwerte: `max_temperatur`, `temperatur_hysterese`, `einschalthysterese`, `ausschalthysterese`, `einschaltverzoegerung`, `ausschaltverzoegerung`, `display_timeout`
+- `flash_groesse`: Flash des S3-Moduls
+- `touch_…`: Touch-Kalibrierung
 - `pin_…`: alle GPIOs
+- `knopf_…`, `einstellungen_layout`: Lage der Touch-Knöpfe (normalerweise nicht ändern; gilt für Anzeige und Touch gemeinsam)
