@@ -66,7 +66,8 @@ substitutions:
   pin_k6_l1n: GPIO16
   pin_onewire_max: GPIO17
   pin_onewire_speicher: GPIO18
-  # SPI gemeinsam für Display und Touch
+  # SPI gemeinsam für Display und Touch.
+  # MISO nur an T_DO des Touch anschließen, SDO des Displays frei lassen.
   pin_spi_clk: GPIO12
   pin_spi_mosi: GPIO11
   pin_spi_miso: GPIO13
