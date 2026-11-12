@@ -2,7 +2,7 @@
 
 Die Konfiguration [`heizpatrone.yaml`](heizpatrone.yaml) steuert eine 9-kW-Heizpatrone in 1-kW-Stufen über 6 Relais. Sie läuft auf einem ESP32-S3 mit 2,8"-Touch-Display, nutzt den PV-Überschuss aus Home Assistant und schaltet bei Übertemperatur ab. Am Display lassen sich Betriebsart, Handleistung und alle Parameter per Touch bedienen.
 
-![Display: Handbetrieb, Einstellungen, Automatik, Übertemperatur](docs/display-vorschau.png)
+![Display: Automatik, Hand, Aus, Betriebsart wählen, Einstellungen, Übertemperatur](docs/display-vorschau.png)
 
 ## Leistungsstufen
 
@@ -43,7 +43,7 @@ Dafür sind die Relais in Home Assistant **nicht direkt schaltbar**, sondern nur
 
 ## Betriebsarten
 
-Umschaltbar über die Entität **Betriebsart**.
+Umschaltbar über die Entität **Betriebsart** oder am Display: **Automatik**, **Hand** oder **Aus**.
 
 ### Automatik (PV-Überschuss)
 
@@ -61,10 +61,14 @@ Beispiel mit Standardwerten für die 4-kW-Stufe: ein ab **4100 W** verfügbar, a
 
 Die Leistung wird über die Entität **Handleistung** oder am Display mit **−/+** vorgegeben (0 … 9000 W) und sofort geschaltet. Die Übertemperatur-Abschaltung gilt weiterhin. Der Handbetrieb läuft auch ohne Verbindung zu Home Assistant weiter. Beim Wechsel zurück auf Automatik regelt diese ab der aktuellen Stufe weiter.
 
+### Aus
+
+Alle Relais sind aus, unabhängig vom PV-Überschuss und von der Handleistung. Beim Umschalten auf „Aus“ werden die Relais sofort abgeschaltet, mit der üblichen sicheren Reihenfolge für die /N-Relais. Temperaturen, PV-Werte und die Übertemperatur-Meldung werden weiter angezeigt. Beim Wechsel auf Automatik regelt diese von 0 W aus hoch, mit der normalen Einschaltverzögerung.
+
 ## Maximaltemperatur
 
 - Ein eigener DS18B20 am **Eingang 1** überwacht die Maximaltemperatur.
-- Liegt der Messwert **über der Maximaltemperatur** (Standard 80 °C), werden sofort alle Relais abgeschaltet (0 W), in beiden Betriebsarten.
+- Liegt der Messwert **über der Maximaltemperatur** (Standard 80 °C), werden sofort alle Relais abgeschaltet (0 W), in jeder Betriebsart.
 - **Wieder eingeschaltet** wird erst, wenn die Temperatur um die **Temperatur-Hysterese** gefallen ist (Standard 5 K, also bei 75 °C).
 - **Liefert der Fühler keinen Messwert** (defekt, abgesteckt, kurz nach dem Start), bleibt ebenfalls alles aus.
 
@@ -74,7 +78,7 @@ Die Leistung wird über die Entität **Handleistung** oder am Display mit **−/
 
 | Entität | Art | Bedeutung |
 |---------|-----|-----------|
-| **Betriebsart** | Auswahl | Automatik / Hand |
+| **Betriebsart** | Auswahl | Automatik / Hand / Aus |
 | **Handleistung** | Auswahl | 0 … 9000 W für den Handbetrieb |
 | **Heizleistung** | Sensor | aktuell geschaltete Leistung |
 | **Verfügbare Leistung** | Sensor | PV-Überschuss + Heizleistung |
@@ -82,7 +86,7 @@ Die Leistung wird über die Entität **Handleistung** oder am Display mit **−/
 | **Speicher 1 (oben) … Speicher 5 (unten)** | Sensor | Temperaturverlauf im Speicher |
 | **Übertemperatur** | Binärsensor | Abschaltung aktiv |
 | **Relais K1 L1 … K6 L1-N** | Binärsensor | Relaiszustand (nur Anzeige) |
-| **Status** | Text | z. B. „Automatik: 4000 W“, „Übertemperatur 81.0 °C“ |
+| **Status** | Text | z. B. „Automatik: 4000 W“, „Betriebsart Aus“, „Übertemperatur 81.0 °C“ |
 | **Maximaltemperatur**, **Temperatur-Hysterese** | Einstellung | Übertemperatur-Abschaltung |
 | **Einschalthysterese**, **Ausschalthysterese** | Einstellung | Automatik |
 | **Einschaltverzögerung**, **Ausschaltverzögerung** | Einstellung | Automatik (10–900 s) |
@@ -93,7 +97,7 @@ Einstellungen, Betriebsart und Handleistung bleiben nach einem Neustart erhalten
 
 ## Display und Touch-Bedienung
 
-Das Display (2,8", 320 × 240) hat zwei Seiten.
+Das Display (2,8", 320 × 240) hat drei Seiten.
 
 **Übersicht**
 - **Statuszeile oben:** z. B. „Automatik: 4000 W“, bei Übertemperatur rot
@@ -103,13 +107,18 @@ Das Display (2,8", 320 × 240) hat zwei Seiten.
 - **Handbetrieb:** stattdessen die Handleistung mit Knöpfen **−** und **+**
 - **Speicher:** bis zu 5 Schichten, farbig von blau (kalt) bis rot (heiß); nicht vorhandene Fühler grau
 - **Max-Fühler:** Messwert und Grenze
-- **Knopf „Modus“:** wechselt zwischen Automatik (grün) und Hand (orange)
-- **Knopf „Einstellungen“:** öffnet die zweite Seite
+- **Knopf „Modus“:** zeigt die aktuelle Betriebsart (grün Automatik, orange Hand, grau Aus) und öffnet die Auswahl
+- **Knopf „Einstellungen“:** öffnet die Einstellungsseite
+
+**Betriebsart wählen**
+- Drei große Knöpfe **Automatik**, **Hand** und **Aus**. Die aktive Betriebsart ist farbig hinterlegt.
+- Ein Tipp wählt die Betriebsart und kehrt zur Übersicht zurück. Man springt also direkt von Automatik auf Aus, ohne kurz über Hand zu schalten.
 
 **Einstellungen**
 - Maximaltemperatur, Temperatur-Hysterese, Ein- und Ausschalthysterese, Ein- und Ausschaltverzögerung, jeweils mit **−** und **+**
 - Die Werte sind dieselben wie in Home Assistant und bleiben gespeichert.
-- „Zurück zur Übersicht“, oder automatisch nach 60 s ohne Berührung
+
+Von beiden Unterseiten geht es mit „Zurück zur Übersicht“ zurück, oder automatisch nach 60 s ohne Berührung.
 
 **Beleuchtung**
 - Geht nach dem **Display-Timeout** aus (Standard 10 min, 0 = immer an).
@@ -129,8 +138,8 @@ Der resistive Touch (XPT2046) muss einmal auf das eigene Display abgestimmt werd
 3. Kleinster und größter Roh-x-Wert → `touch_x_min` / `touch_x_max`; dasselbe für y.
 4. Prüfen, ob die Richtung stimmt:
    - **Achsen vertauscht** (nach rechts tippen ändert vor allem y): `touch_swap_xy` umstellen und Schritt 2 wiederholen.
-   - **x gespiegelt** (Roh-x wird nach rechts *kleiner*): `touch_mirror_x: "true"`.
-   - **y gespiegelt** (Roh-y wird nach unten *kleiner*): `touch_mirror_y: "true"`.
+   - **x-Richtung:** Wird Roh-x nach rechts *kleiner*, `touch_mirror_x: "true"` (voreingestellt), wird es größer, `"false"`.
+   - **y-Richtung:** Wird Roh-y nach unten *kleiner*, `touch_mirror_y: "true"` (voreingestellt), wird es größer, `"false"`.
    - `min` muss immer kleiner als `max` sein, auch bei gespiegelter Achse.
 5. Neu flashen. Die angezeigten `x`/`y` sollten jetzt etwa 0–320 bzw. 0–240 ergeben, und die Knöpfe reagieren dort, wo man tippt.
 

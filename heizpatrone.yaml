@@ -10,12 +10,13 @@
 #   Automatik: Stufe nach PV-Überschuss, mit Ein- und Ausschalthysterese
 #              sowie Ein- und Ausschaltverzögerung
 #   Hand:      Leistung über die Entität "Handleistung"
+#   Aus:       alle Relais aus
 #
-# In beiden Betriebsarten: Überschreitet der Max-Fühler die Maximaltemperatur,
+# In jeder Betriebsart: Überschreitet der Max-Fühler die Maximaltemperatur,
 # werden alle Relais abgeschaltet. Wieder eingeschaltet wird erst, wenn die
 # Temperatur um die Temperatur-Hysterese gefallen ist.
 #
-# Touch-Bedienung am Display: Betriebsart umschalten, Handleistung -/+,
+# Touch-Bedienung am Display: Betriebsart wählen, Handleistung -/+,
 # Einstellungsseite (Temperatur, Hysteresen, Verzögerungen).
 #
 # SICHERHEIT: Diese Abschaltung ersetzt NICHT den Sicherheitstemperatur-
@@ -84,8 +85,8 @@ substitutions:
   touch_y_min: "300"
   touch_y_max: "3800"
   touch_swap_xy: "true"
-  touch_mirror_x: "false"
-  touch_mirror_y: "false"
+  touch_mirror_x: "true"
+  touch_mirror_y: "true"
 
   # Layout der Touch-Knöpfe (x, y, Breite, Höhe) – gilt für Anzeige UND
   # Touch-Auswertung. Normalerweise nicht ändern.
@@ -94,6 +95,10 @@ substitutions:
   knopf_hand_minus: "8, 160, 52, 36"
   knopf_hand_plus: "138, 160, 52, 36"
   knopf_zurueck: "4, 202, 312, 36"
+  # Seite "Betriebsart wählen"
+  knopf_wahl_automatik: "4, 30, 312, 52"
+  knopf_wahl_hand: "4, 88, 312, 52"
+  knopf_wahl_aus: "4, 146, 312, 52"
   # Einstellungsseite: erste Zeile y, Zeilenhöhe, Minus-x, Plus-x, Knopfbreite
   einstellungen_layout: "28, 28, 212, 266, 48"
 
@@ -177,7 +182,7 @@ globals:
   - id: status_str
     type: std::string
     initial_value: '""'
-  # Display-Seite: 0 = Übersicht, 1 = Einstellungen
+  # Display-Seite: 0 = Übersicht, 1 = Einstellungen, 2 = Betriebsart wählen
   - id: seite
     type: int
     initial_value: "0"
@@ -353,9 +358,11 @@ select:
     id: betriebsart
     name: "Betriebsart"
     icon: mdi:hand-back-right-outline
+    # Reihenfolge nicht ändern: Index 0 = Automatik, 1 = Hand, 2 = Aus
     options:
       - "Automatik"
       - "Hand"
+      - "Aus"
     initial_option: "Automatik"
     optimistic: true
     restore_value: true
@@ -573,6 +580,9 @@ script:
           static const int HPLUS[4] = {${knopf_hand_plus}};
           static const int ZURUECK[4] = {${knopf_zurueck}};
           static const int EL[5] = {${einstellungen_layout}};
+          static const int WAHL[3][4] = {{${knopf_wahl_automatik}}, {${knopf_wahl_hand}},
+                                         {${knopf_wahl_aus}}};
+          static const char *const MODI[3] = {"Automatik", "Hand", "Aus"};
           // Trefferfläche etwas größer als der Knopf (resistiver Touch)
           auto in = [&](const int r[4]) {
             return x >= r[0] - 4 && x < r[0] + r[2] + 4 && y >= r[1] - 4 && y < r[1] + r[3] + 4;
@@ -583,7 +593,7 @@ script:
             const bool hand = id(betriebsart).active_index().value_or(0) == 1;
             if (in(MODUS)) {
               knopf = 1;
-              id(betriebsart).make_call().set_option(hand ? "Automatik" : "Hand").perform();
+              id(seite) = 2;  // Betriebsart wählen
             } else if (in(MENUE)) {
               knopf = 2;
               id(seite) = 1;
@@ -593,6 +603,20 @@ script:
             } else if (hand && in(HPLUS)) {
               knopf = 4;
               id(handleistung).make_call().select_next(false).perform();
+            }
+          } else if (id(seite) == 2) {
+            if (in(ZURUECK)) {
+              knopf = 5;
+              id(seite) = 0;
+            } else {
+              for (int i = 0; i < 3; i++) {
+                if (in(WAHL[i])) {
+                  knopf = 20 + i;
+                  id(betriebsart).make_call().set_option(MODI[i]).perform();
+                  id(seite) = 0;
+                  break;
+                }
+              }
             }
           } else {
             number::Number *const WERTE[6] = {
@@ -653,9 +677,17 @@ interval:
           id(verfuegbare_leistung) = verfuegbar;
 
           // --- 3. Zielstufe ------------------------------------------------
-          const bool hand = id(betriebsart).active_index().value_or(0) == 1;
+          // Betriebsart: 0 = Automatik, 1 = Hand, 2 = Aus
+          const int modus = id(betriebsart).active_index().value_or(0);
+          const bool hand = modus == 1;
+          const bool aus = modus == 2;
           int ziel;
-          if (hand) {
+          if (aus) {
+            ziel = 0;
+            // Beim Wechsel auf Automatik wieder von 0 aus hochregeln
+            id(auto_stufe) = 0;
+            id(wunsch_richtung) = 0;
+          } else if (hand) {
             ziel = id(handleistung).active_index().value_or(0);
             // Beim Wechsel auf Automatik mit der aktuellen Stufe weitermachen
             id(auto_stufe) = id(ist_stufe);
@@ -716,9 +748,11 @@ interval:
           // --- 5. Status -----------------------------------------------------
           char buf[64];
           if (std::isnan(t)) {
-            snprintf(buf, sizeof(buf), "Aus: Max-Fühler ohne Messwert");
+            snprintf(buf, sizeof(buf), "Abschaltung: Max-Fühler ohne Messwert");
           } else if (ueber) {
             snprintf(buf, sizeof(buf), "Übertemperatur %.1f °C", t);
+          } else if (aus) {
+            snprintf(buf, sizeof(buf), "Betriebsart Aus");
           } else if (hand) {
             snprintf(buf, sizeof(buf), "Hand: %d W", LEISTUNG[ziel]);
           } else if (!pv_ok) {
@@ -805,6 +839,8 @@ display:
       static const int HPLUS[4] = {${knopf_hand_plus}};
       static const int ZURUECK[4] = {${knopf_zurueck}};
       static const int EL[5] = {${einstellungen_layout}};
+      static const int WAHL[3][4] = {{${knopf_wahl_automatik}}, {${knopf_wahl_hand}},
+                                     {${knopf_wahl_aus}}};
       const Color WEISS(255, 255, 255), HELL(190, 190, 190), GRAU(110, 110, 110),
                   DUNKEL(45, 45, 45), ROT(230, 40, 40), BLAU(40, 100, 235),
                   GRUEN(40, 150, 75), ORANGE(220, 125, 10), SCHWARZ(0, 0, 0);
@@ -828,7 +864,10 @@ display:
         it.filled_rectangle(cx - 9, cy - 2, 18, 4, c);
         if (plus) it.filled_rectangle(cx - 2, cy - 9, 4, 18, c);
       };
-      const bool hand = id(betriebsart).active_index().value_or(0) == 1;
+      // Betriebsart: 0 = Automatik, 1 = Hand, 2 = Aus
+      const int modus = id(betriebsart).active_index().value_or(0);
+      const bool hand = modus == 1;
+      const bool aus = modus == 2;
       const bool ueber = id(uebertemp);
 
       it.fill(SCHWARZ);
@@ -837,8 +876,35 @@ display:
       it.filled_rectangle(0, 0, 320, 24, ueber ? ROT : DUNKEL);
       if (id(seite) == 1 && !ueber) {
         it.print(160, 12, id(font_m), WEISS, TextAlign::CENTER, "Einstellungen");
+      } else if (id(seite) == 2 && !ueber) {
+        it.print(160, 12, id(font_m), WEISS, TextAlign::CENTER, "Betriebsart wählen");
       } else {
         it.print(160, 12, id(font_s), WEISS, TextAlign::CENTER, id(status_str).c_str());
+      }
+
+      if (id(seite) == 2) {
+        // ---------------- Seite 3: Betriebsart wählen ----------------
+        static const char *const MODI[3] = {"Automatik", "Hand", "Aus"};
+        static const char *const INFO[3] = {"Leistung nach PV-Überschuss",
+                                            "feste Leistung (Handleistung)",
+                                            "alle Relais aus"};
+        const Color FARBE[3] = {GRUEN, ORANGE, GRAU};
+        for (int i = 0; i < 3; i++) {
+          const int *r = WAHL[i];
+          const bool aktiv = i == modus;
+          const Color c = knopf(r, aktiv ? FARBE[i] : DUNKEL, ist_gedrueckt(20 + i));
+          if (!aktiv) it.rectangle(r[0] + 1, r[1] + 1, r[2] - 2, r[3] - 2, FARBE[i]);
+          it.print(r[0] + 14, r[1] + 17, id(font_m), c, TextAlign::CENTER_LEFT, MODI[i]);
+          it.print(r[0] + 14, r[1] + 37, id(font_xs), c, TextAlign::CENTER_LEFT, INFO[i]);
+          if (aktiv) {
+            it.print(r[0] + r[2] - 12, r[1] + r[3] / 2, id(font_s), c,
+                     TextAlign::CENTER_RIGHT, "aktiv");
+          }
+        }
+        const Color c = knopf(ZURUECK, DUNKEL, ist_gedrueckt(5));
+        it.print(ZURUECK[0] + ZURUECK[2] / 2, ZURUECK[1] + ZURUECK[3] / 2, id(font_m), c,
+                 TextAlign::CENTER, "Zurück zur Übersicht");
+        return;
       }
 
       if (id(seite) == 1) {
@@ -915,7 +981,7 @@ display:
                     id(verfuegbare_leistung));
         }
         // Countdown der Automatik
-        if (!ueber && id(wunsch_richtung) != 0) {
+        if (!aus && !ueber && id(wunsch_richtung) != 0) {
           const float verz = id(wunsch_richtung) > 0 ? id(ein_verzoegerung).state
                                                      : id(aus_verzoegerung).state;
           int rest = (int) (verz - (jetzt - id(wunsch_seit)) / 1000.0f);
@@ -953,10 +1019,11 @@ display:
       it.printf(260, 186, id(font_xs), HELL, TextAlign::TOP_CENTER, "Grenze %.0f °C",
                 id(max_temperatur).state);
 
-      // Knöpfe unten
-      Color c = knopf(MODUS, hand ? ORANGE : GRUEN, ist_gedrueckt(1));
+      // Knöpfe unten ("Modus" öffnet die Auswahl der Betriebsart)
+      Color c = knopf(MODUS, hand ? ORANGE : (aus ? GRAU : GRUEN), ist_gedrueckt(1));
       it.print(MODUS[0] + MODUS[2] / 2, MODUS[1] + MODUS[3] / 2, id(font_m), c,
-               TextAlign::CENTER, hand ? "Modus: Hand" : "Modus: Automatik");
+               TextAlign::CENTER,
+               hand ? "Modus: Hand" : (aus ? "Modus: Aus" : "Modus: Automatik"));
       c = knopf(MENUE, DUNKEL, ist_gedrueckt(2));
       it.print(MENUE[0] + MENUE[2] / 2, MENUE[1] + MENUE[3] / 2, id(font_m), c,
                TextAlign::CENTER, "Einstellungen");
