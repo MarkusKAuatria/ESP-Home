@@ -974,6 +974,15 @@ display:
         it.print(x, 125, id(font_xs), HELL, TextAlign::TOP_CENTER, NAMEN[i]);
       }
 
+      // Zusatzrelais K7/K8 rechts neben der Heizleistung (rot = ein)
+      const bool zusatz[2] = {id(k7).state, id(k8).state};
+      for (int i = 0; i < 2; i++) {
+        const int y = 52 + i * 24;
+        it.print(176, y, id(font_xs), HELL, TextAlign::CENTER_RIGHT, i == 0 ? "K7" : "K8");
+        it.filled_circle(186, y, 6, zusatz[i] ? ROT : DUNKEL);
+        it.circle(186, y, 6, GRAU);
+      }
+
       if (hand) {
         // Handleistung mit - / + Knöpfen
         it.print(8, 142, id(font_s), HELL, TextAlign::TOP_LEFT, "Handleistung");
