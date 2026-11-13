@@ -242,7 +242,9 @@ Bewusst **nicht** belegt:
 
 | GPIO | Grund |
 |------|-------|
-| 0, 3, 45, 46 | Boot |
+| 0, 46 | Strapping-Pins: legen beim Start den Bootmodus fest (normal oder Download) |
+| 3 | Strapping-Pin: JTAG-Auswahl, USB oder GPIO39–42 (nur wirksam, wenn die eFuse `STRAP_JTAG_SEL` gesetzt ist; ab Werk nicht) |
+| 45 | Strapping-Pin: legt beim Start die Spannung für Flash/PSRAM fest |
 | 19, 20 | USB |
 | 26–37 | Flash/PSRAM |
 | 38, 48 | RGB-LED des Boards |

@@ -58,7 +58,7 @@ substitutions:
   flash_groesse: 16MB
 
   # GPIOs (ESP32-S3-DevKitC-1) – siehe Schaltungsvorschlag.
-  # Nicht verwenden: GPIO0/3/45/46 (Boot), 19/20 (USB), 26–37 (Flash/PSRAM),
+  # Nicht verwenden: GPIO0/3/45/46 (Strapping), 19/20 (USB), 26–37 (Flash/PSRAM),
   # 38/48 (RGB-LED), 43/44 (UART0). Noch frei als Reserve: GPIO39–42.
   pin_k1_l1: GPIO4
   pin_k2_l2n: GPIO5
