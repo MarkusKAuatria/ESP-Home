@@ -1,6 +1,6 @@
 # ESPHome: Heizpatrone im Pufferspeicher (ESP32-S3 + Touch-Display)
 
-Die Konfiguration [`heizpatrone.yaml`](heizpatrone.yaml) steuert eine 9-kW-Heizpatrone in 1-kW-Stufen über 6 Relais. Sie läuft auf einem ESP32-S3 mit 2,8"-Touch-Display, nutzt den PV-Überschuss aus Home Assistant und schaltet bei Übertemperatur ab. Am Display lassen sich Betriebsart, Handleistung und alle Parameter per Touch bedienen.
+Die Konfiguration [`heizpatrone.yaml`](heizpatrone.yaml) steuert eine 9-kW-Heizpatrone in 1-kW-Stufen über 6 Relais, dazu kommen 2 frei schaltbare Zusatzrelais. Sie läuft auf einem ESP32-S3 mit 2,8"-Touch-Display, nutzt den PV-Überschuss aus Home Assistant und schaltet bei Übertemperatur ab. Am Display lassen sich Betriebsart, Handleistung und alle Parameter per Touch bedienen.
 
 ![Display: Automatik, Hand, Aus, Betriebsart wählen, Einstellungen, Übertemperatur](docs/display-vorschau.png)
 
@@ -65,6 +65,15 @@ Die Leistung wird über die Entität **Handleistung** oder am Display mit **−/
 
 Alle Relais sind aus, unabhängig vom PV-Überschuss und von der Handleistung. Beim Umschalten auf „Aus“ werden die Relais sofort abgeschaltet, mit der üblichen sicheren Reihenfolge für die /N-Relais. Temperaturen, PV-Werte und die Übertemperatur-Meldung werden weiter angezeigt. Beim Wechsel auf Automatik regelt diese von 0 W aus hoch, mit der normalen Einschaltverzögerung.
 
+## Zusatzrelais K7 und K8
+
+Zwei weitere Relais, unabhängig von der Heizpatrone:
+
+- In Home Assistant als Schalter **Relais K7** und **Relais K8** schaltbar.
+- Betriebsart, Übertemperatur und PV-Regelung beeinflussen sie nicht.
+- Nach einem Neustart oder Stromausfall stellen sie ihren letzten Zustand wieder her; beim allerersten Start sind sie aus. Sollen sie nach einem Neustart immer aus sein, in der YAML bei `k7`/`k8` `restore_mode: ALWAYS_OFF` eintragen.
+- Die Kontakte der Koppelrelais schalten bis 250 V~ / 6 A. Für größere Lasten ein Schütz dazwischen setzen, wie bei der Heizpatrone.
+
 ## Maximaltemperatur
 
 - Ein eigener DS18B20 am **Eingang 1** überwacht die Maximaltemperatur.
@@ -85,7 +94,8 @@ Alle Relais sind aus, unabhängig vom PV-Überschuss und von der Handleistung. B
 | **Temperatur Max-Fühler** | Sensor | Fühler an Eingang 1 |
 | **Speicher 1 (oben) … Speicher 5 (unten)** | Sensor | Temperaturverlauf im Speicher |
 | **Übertemperatur** | Binärsensor | Abschaltung aktiv |
-| **Relais K1 L1 … K6 L1-N** | Binärsensor | Relaiszustand (nur Anzeige) |
+| **Relais K1 L1 … K6 L1-N** | Binärsensor | Relaiszustand der Heizpatrone (nur Anzeige) |
+| **Relais K7**, **Relais K8** | Schalter | Zusatzrelais, frei schaltbar |
 | **Status** | Text | z. B. „Automatik: 4000 W“, „Betriebsart Aus“, „Übertemperatur 81.0 °C“ |
 | **Maximaltemperatur**, **Temperatur-Hysterese** | Einstellung | Übertemperatur-Abschaltung |
 | **Einschalthysterese**, **Ausschalthysterese** | Einstellung | Automatik |
@@ -176,28 +186,29 @@ Den Block `psram:` nur löschen, wenn wirklich kein PSRAM da ist. Steht er in de
 | 1 | ESP32-S3-DevKitC-1-N16R8 (im Metallschrank: ESP32-S3-DevKitC-1U-N16R8 mit externer Antenne) |
 | 1 | TFT 2,8" ILI9341 mit Touch (XPT2046), SPI, 320 × 240 |
 | 1 | ULN2803A (Darlington-Treiber, 8 Kanäle) |
-| 6 | Koppelrelais 12 V DC, 1 Wechsler, 250 V~ / ≥ 6 A (z. B. Finder Serie 38, Hutschiene) |
+| 8 | Koppelrelais 12 V DC, 1 Wechsler, 250 V~ / ≥ 6 A (z. B. Finder Serie 38, Hutschiene); 6 für die Heizpatrone, 2 als Zusatzrelais |
 | 6 | Installationsschütz 230-V-Spule, passend zur Patrone (z. B. 20/25 A); **Q2, Q4, Q6 mit 1 Schließer + 1 Öffner** |
 | 2–6 | DS18B20 wasserdicht (für Tauchhülse) |
 | 1 | Netzteil 12 V DC ≥ 1 A, Hutschiene (z. B. Mean Well HDR-15-12) |
 | 1 | DC/DC-Wandler 12 V → 5 V, ≥ 1 A (z. B. Traco TSR 1-2450) |
 | 3 | NPN-Transistor BC547 |
-| 6 / 3 | LED rot / LED blau |
-| 9 / 3 / 3 / 2 | Widerstand 1 kΩ / 47 kΩ / 10 kΩ / 4,7 kΩ |
+| 8 / 3 | LED rot / LED blau |
+| 11 / 3 / 3 / 2 | Widerstand 1 kΩ / 47 kΩ / 10 kΩ / 4,7 kΩ |
 
 ### Schaltungsvorschlag Steuerung
 
 ![Schaltungsvorschlag Steuerung](docs/schaltplan-steuerung.svg)
 
 **Signalweg:**
-1. Der ESP32-S3 steuert über eine **ULN2803A** die Spulen von 6 **Koppelrelais (12 V)**. GPIO high bedeutet Relais ein.
-2. Die Kontakte der Koppelrelais schalten die 230-V-Spulen der **Schütze Q1–Q6**.
+1. Der ESP32-S3 steuert über eine **ULN2803A** die Spulen von 8 **Koppelrelais (12 V)**. GPIO high bedeutet Relais ein. Damit sind alle 8 Kanäle der ULN2803A belegt.
+2. Die Kontakte von K1–K6 schalten die 230-V-Spulen der **Schütze Q1–Q6**.
 3. Die Schütze schalten die Heizelemente.
+4. K7 und K8 sind frei verwendbar.
 
 Die Freilaufdioden für die Relaisspulen sind in der ULN2803A eingebaut (Pin 10 COM an +12 V).
 
 **LED-Anzeigen laut Spezifikation:**
-- **Typ A (K1, K3, K5):** Rote LED mit 1 kΩ parallel zur Spule, leuchtet bei *ein*.
+- **Typ A (K1, K3, K5, K7, K8):** Rote LED mit 1 kΩ parallel zur Spule, leuchtet bei *ein*.
 - **Typ B (K2, K4, K6):** Rote LED wie Typ A. Zusätzlich eine blaue LED über einen Transistor-Inverter (BC547). Sie leuchtet, solange der ULN-Ausgang sperrt, also bei *aus* (Stellung N). Der Spannungsteiler 47 kΩ / 10 kΩ belastet die Spule dabei nur mit etwa 0,2 mA, das Relais bleibt sicher abgefallen.
 
 **Belegung (ESP32-S3-DevKitC-1):**
@@ -210,8 +221,10 @@ Die Freilaufdioden für die Relaisspulen sind in der ULN2803A eingebaut (Pin 10 
 | K4 L3/N | GPIO7 | ULN2803A IN4 |
 | K5 L3 | GPIO15 | ULN2803A IN5 |
 | K6 L1/N | GPIO16 | ULN2803A IN6 |
-| Fühler Eingang 1 (Max) | GPIO17 | DS18B20 DQ, 4,7 kΩ nach 3V3 |
-| Fühler Eingang 2 (Speicher) | GPIO18 | DS18B20 DQ (1–5 parallel), 4,7 kΩ nach 3V3 |
+| K7 (Zusatzrelais) | GPIO17 | ULN2803A IN7 |
+| K8 (Zusatzrelais) | GPIO18 | ULN2803A IN8 |
+| Fühler Eingang 1 (Max) | GPIO8 | DS18B20 DQ, 4,7 kΩ nach 3V3 |
+| Fühler Eingang 2 (Speicher) | GPIO47 | DS18B20 DQ (1–5 parallel), 4,7 kΩ nach 3V3 |
 | SPI SCK | GPIO12 | Display SCK **und** Touch T_CLK |
 | SPI MOSI | GPIO11 | Display SDI (MOSI) **und** Touch T_DIN |
 | SPI MISO | GPIO13 | **nur** Touch T_DO (Display-SDO frei lassen, siehe unten) |
@@ -229,11 +242,15 @@ Bewusst **nicht** belegt:
 
 | GPIO | Grund |
 |------|-------|
-| 0, 3, 45, 46 | Boot |
+| 0, 46 | Strapping-Pins: legen beim Start den Bootmodus fest (normal oder Download) |
+| 3 | Strapping-Pin: JTAG-Auswahl, USB oder GPIO39–42 (nur wirksam, wenn die eFuse `STRAP_JTAG_SEL` gesetzt ist; ab Werk nicht) |
+| 45 | Strapping-Pin: legt beim Start die Spannung für Flash/PSRAM fest |
 | 19, 20 | USB |
 | 26–37 | Flash/PSRAM |
 | 38, 48 | RGB-LED des Boards |
 | 43, 44 | UART |
+
+Noch frei als Reserve: **GPIO39–42**. Das sind die JTAG-Pins, die nicht gebraucht werden, weil das Debuggen beim S3 über USB läuft.
 
 Alle Pins lassen sich oben in der YAML unter `substitutions` ändern.
 
