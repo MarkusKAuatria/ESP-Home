@@ -5,6 +5,7 @@
 # 6 Relais schalten die 3 Heizelemente der Patrone im Stern (gegen N, ~1 kW)
 # oder im Dreieck (gegen die Nachbarphase, ~3 kW). Daraus ergeben sich die
 # Leistungsstufen 0 / 1 / 2 / 3 / 4 / 5 / 6 / 7 / 9 kW (siehe Tabelle unten).
+# Zwei weitere Relais (K7, K8) sind frei aus Home Assistant schaltbar.
 #
 # Betriebsarten (Entität "Betriebsart"):
 #   Automatik: Stufe nach PV-Überschuss, mit Ein- und Ausschalthysterese
@@ -58,15 +59,18 @@ substitutions:
 
   # GPIOs (ESP32-S3-DevKitC-1) – siehe Schaltungsvorschlag.
   # Nicht verwenden: GPIO0/3/45/46 (Boot), 19/20 (USB), 26–37 (Flash/PSRAM),
-  # 38/48 (RGB-LED), 43/44 (UART0).
+  # 38/48 (RGB-LED), 43/44 (UART0). Noch frei als Reserve: GPIO39–42.
   pin_k1_l1: GPIO4
   pin_k2_l2n: GPIO5
   pin_k3_l2: GPIO6
   pin_k4_l3n: GPIO7
   pin_k5_l3: GPIO15
   pin_k6_l1n: GPIO16
-  pin_onewire_max: GPIO17
-  pin_onewire_speicher: GPIO18
+  # Zusatzrelais, frei aus Home Assistant schaltbar
+  pin_k7: GPIO17
+  pin_k8: GPIO18
+  pin_onewire_max: GPIO8
+  pin_onewire_speicher: GPIO47
   # SPI gemeinsam für Display und Touch.
   # MISO nur an T_DO des Touch anschließen, SDO des Displays frei lassen.
   pin_spi_clk: GPIO12
@@ -349,6 +353,22 @@ switch:
     pin: ${pin_k6_l1n}
     internal: true
     restore_mode: ALWAYS_OFF
+
+  # Zusatzrelais K7 und K8 (ULN2803A IN7/IN8): unabhängig von der
+  # Heizpatrone, frei aus Home Assistant schaltbar. Nach einem Neustart wird
+  # der letzte Zustand wiederhergestellt (beim allerersten Start aus).
+  - platform: gpio
+    id: k7
+    pin: ${pin_k7}
+    name: "Relais K7"
+    icon: mdi:electric-switch
+    restore_mode: RESTORE_DEFAULT_OFF
+  - platform: gpio
+    id: k8
+    pin: ${pin_k8}
+    name: "Relais K8"
+    icon: mdi:electric-switch
+    restore_mode: RESTORE_DEFAULT_OFF
 
 # -----------------------------------------------------------------------------
 # Bedienung in Home Assistant
