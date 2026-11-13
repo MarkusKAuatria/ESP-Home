@@ -70,6 +70,7 @@ Alle Relais sind aus, unabhängig vom PV-Überschuss und von der Handleistung. B
 Zwei weitere Relais, unabhängig von der Heizpatrone:
 
 - In Home Assistant als Schalter **Relais K7** und **Relais K8** schaltbar.
+- Am Display rechts neben der Heizleistung angezeigt (rot = ein).
 - Betriebsart, Übertemperatur und PV-Regelung beeinflussen sie nicht.
 - Nach einem Neustart oder Stromausfall stellen sie ihren letzten Zustand wieder her; beim allerersten Start sind sie aus. Sollen sie nach einem Neustart immer aus sein, in der YAML bei `k7`/`k8` `restore_mode: ALWAYS_OFF` eintragen.
 - Die Kontakte der Koppelrelais schalten bis 250 V~ / 6 A. Für größere Lasten ein Schütz dazwischen setzen, wie bei der Heizpatrone.
@@ -112,6 +113,7 @@ Das Display (2,8", 320 × 240) hat drei Seiten.
 **Übersicht**
 - **Statuszeile oben:** z. B. „Automatik: 4000 W“, bei Übertemperatur rot
 - **Heizleistung:** groß, mit Balken
+- **Zusatzrelais K7/K8:** rechts neben der Heizleistung, rot = ein (nur Anzeige, geschaltet wird in Home Assistant)
 - **Relais:** wie die LEDs im Schaltschrank, rot = ein, /N-Relais blau = aus
 - **Automatik:** PV-Überschuss und verfügbare Leistung, mit Countdown bis zur nächsten Umschaltung
 - **Handbetrieb:** stattdessen die Handleistung mit Knöpfen **−** und **+**
