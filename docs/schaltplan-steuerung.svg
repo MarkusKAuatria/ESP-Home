@@ -3,7 +3,7 @@
 <text x="20" y="32" font-size="20" text-anchor="start" font-weight="bold" fill="#000">Schaltungsvorschlag Steuerung (Kleinspannung 12 V / 3,3 V)</text>
 <rect x="20" y="55" width="220" height="56" rx="4" fill="#f4f6f8" stroke="#000" stroke-width="1.6"/>
 <text x="130.0" y="79.33333333333333" font-size="13" text-anchor="middle" font-weight="bold" fill="#000">Netzteil 230 V~ → 12 V DC</text>
-<text x="130.0" y="95.33333333333333" font-size="13" text-anchor="middle" font-weight="normal" fill="#000">≥ 1 A, Hutschiene</text>
+<text x="130.0" y="95.33333333333333" font-size="13" text-anchor="middle" font-weight="normal" fill="#000">Mean Well HDR-60-12, 4,5 A</text>
 <polyline points="240,83 960,83" fill="none" stroke="#d62828" stroke-width="2.2"/>
 <text x="955" y="76" font-size="13" text-anchor="end" font-weight="bold" fill="#d62828">+12 V</text>
 <rect x="290" y="122" width="180" height="46" rx="4" fill="#f4f6f8" stroke="#000" stroke-width="1.6"/>
@@ -137,7 +137,7 @@
 <text x="980" y="278" font-size="12" text-anchor="start" font-weight="normal" fill="#666">Anzeige</text>
 <text x="1050" y="278" font-size="12" text-anchor="start" font-weight="normal" fill="#666">schaltet</text>
 <text x="770" y="555" font-size="12" text-anchor="start" font-weight="normal" fill="#000">K1–K8: Koppelrelais 12 V DC, Kontakt 250 V~ / ≥ 6 A</text>
-<text x="770" y="572" font-size="12" text-anchor="start" font-weight="normal" fill="#000">K1–K6 schalten die 230-V-Spulen der Schütze Q1–Q6,</text>
+<text x="770" y="572" font-size="12" text-anchor="start" font-weight="normal" fill="#000">K1–K6 schalten die 12-V-DC-Spulen der Schütze Q1–Q6,</text>
 <text x="770" y="589" font-size="12" text-anchor="start" font-weight="normal" fill="#000">K7/K8 sind frei und aus Home Assistant schaltbar.</text>
 <rect x="30" y="278" width="120" height="44" rx="4" fill="#f4f6f8" stroke="#000" stroke-width="1.6"/>
 <text x="90.0" y="296.5" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">DS18B20</text>
@@ -211,6 +211,39 @@
 <circle cx="380" cy="740" r="3.2" fill="#000"/>
 <circle cx="650" cy="740" r="3.2" fill="#000"/>
 <text x="24" y="734" font-size="12" text-anchor="start" font-weight="bold" fill="#000">GND / 0 V (gemeinsam: Netzteil, DC/DC, ESP32, ULN2803A)</text>
+<text x="730" y="622" font-size="13" text-anchor="start" font-weight="bold" fill="#000">Schützspule je Kanal (Q1–Q6, 12 V DC)</text>
+<text x="730" y="656" font-size="12" text-anchor="start" font-weight="bold" fill="#d62828">+12 V</text>
+<polyline points="730,664 780,664" fill="none" stroke="#d62828" stroke-width="2.2"/>
+<rect x="780" y="657" width="40" height="14" rx="0" fill="#fff" stroke="#000" stroke-width="1.6"/>
+<polyline points="780,664 820,664" fill="none" stroke="#000" stroke-width="1"/>
+<text x="800" y="688" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">F</text>
+<text x="800" y="703" font-size="10" text-anchor="middle" font-weight="normal" fill="#666">z. B. 3,15 A T</text>
+<polyline points="820,664 852,664" fill="none" stroke="#d62828" stroke-width="2.2"/>
+<polyline points="852,664 880,650" fill="none" stroke="#000" stroke-width="2"/>
+<polyline points="884,658 884,664" fill="none" stroke="#000" stroke-width="1.6"/>
+<polyline points="884,664 960,664" fill="none" stroke="#d62828" stroke-width="2.2"/>
+<text x="868" y="644" font-size="12" text-anchor="middle" font-weight="bold" fill="#000">K1…K6</text>
+<circle cx="960" cy="664" r="3.2" fill="#000"/>
+<polyline points="960,664 960,677.0" fill="none" stroke="#000" stroke-width="1.6"/>
+<rect x="946" y="677.0" width="28" height="40" rx="0" fill="#fff" stroke="#000" stroke-width="2"/>
+<polyline points="946,717.0 974,677.0" fill="none" stroke="#000" stroke-width="1"/>
+<polyline points="960,717.0 960,730" fill="none" stroke="#000" stroke-width="1.6"/>
+<text x="940" y="701.0" font-size="12" text-anchor="end" font-weight="normal" fill="#000">Q1…Q6</text>
+<text x="978" y="678" font-size="10" text-anchor="start" font-weight="normal" fill="#666">A1</text>
+<text x="978" y="724" font-size="10" text-anchor="start" font-weight="normal" fill="#666">A2</text>
+<polyline points="960,664 1030,664" fill="none" stroke="#d62828" stroke-width="2.2"/>
+<polyline points="1030,664 1030,688" fill="none" stroke="#000" stroke-width="1.6"/>
+<polygon points="1021,705 1039,705 1030,689" fill="#fff" stroke="#000" stroke-width="1.6"/>
+<polyline points="1021,688 1039,688" fill="none" stroke="#000" stroke-width="2.2"/>
+<polyline points="1030,705 1030,730" fill="none" stroke="#000" stroke-width="1.6"/>
+<polyline points="960,730 1030,730" fill="none" stroke="#000" stroke-width="1.6"/>
+<circle cx="960" cy="730" r="3.2" fill="#000"/>
+<polyline points="730,730 960,730" fill="none" stroke="#000" stroke-width="1.6"/>
+<text x="730" y="724" font-size="12" text-anchor="start" font-weight="bold" fill="#000">0 V</text>
+<text x="1048" y="689" font-size="12" text-anchor="start" font-weight="bold" fill="#000">1N4007</text>
+<text x="1048" y="705" font-size="11" text-anchor="start" font-weight="normal" fill="#000">Kathode an A1 (+)</text>
+<text x="1048" y="721" font-size="11" text-anchor="start" font-weight="normal" fill="#666">Freilaufdiode direkt</text>
+<text x="1048" y="735" font-size="11" text-anchor="start" font-weight="normal" fill="#666">am Schütz</text>
 <polyline points="20,770 1180,770" fill="none" stroke="#bbb" stroke-width="1"/>
 <text x="20" y="800" font-size="15" text-anchor="start" font-weight="bold" fill="#000">Kanal Typ A (K1, K3, K5, K7, K8): rote LED = ein</text>
 <text x="620" y="800" font-size="15" text-anchor="start" font-weight="bold" fill="#000">Kanal Typ B (K2, K4, K6): rot = ein (Phase), blau = aus (N)</text>
@@ -319,6 +352,6 @@
 <polyline points="976,1078 996,1078" fill="none" stroke="#000" stroke-width="2"/>
 <polyline points="980,1082 992,1082" fill="none" stroke="#000" stroke-width="1.6"/>
 <polyline points="984,1086 988,1086" fill="none" stroke="#000" stroke-width="1.4"/>
-<text x="20" y="1100" font-size="12" text-anchor="start" font-weight="normal" fill="#666">Freilaufdioden sind in der ULN2803A enthalten (COM an +12 V). LED-Strom je ca. 9 mA.</text>
+<text x="20" y="1100" font-size="12" text-anchor="start" font-weight="normal" fill="#666">Freilaufdioden der Koppelrelais sind in der ULN2803A enthalten (COM an +12 V), die Schützspulen bekommen je eine eigene. LED-Strom je ca. 9 mA.</text>
 <text x="20" y="1118" font-size="12" text-anchor="start" font-weight="normal" fill="#666">Blau leuchtet, solange der ULN-Ausgang sperrt (Spulenende auf +12 V = Relais aus = Stellung N). Der Spannungsteiler belastet die Spule nur mit ca. 0,2 mA.</text>
 </svg>
