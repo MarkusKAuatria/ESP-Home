@@ -122,7 +122,6 @@ Vier 3-polige Stiftleisten (2,54 mm) zwischen THmax und POWER, je Pin 1 = IO39 �
 
 - **DevKit:** ESP32-S3-DevKitC-1-N16R8 in zwei Buchsenleisten 1 × 22, Raster 2,54 mm.
 - **Display:** in eine 14-polige Buchsenleiste (2,54 mm) an U4. Die 4 SD-Karten-Pins (15–18) sind nicht angeschlossen. Am Display die Lötbrücke **J1 schließen**, weil VCC hier an 3,3 V liegt.
-- **Bohrungen für U4:** Sie sind nur 0,8 mm groß. Leisten mit den üblichen 0,64-mm-Vierkantstiften (Diagonale ca. 0,9 mm) passen dort nicht. Nur Buchsenleisten mit dünneren Lötstiften verwenden oder die Bohrungen im Footprint auf 1,0 mm vergrößern, wie beim DevKit.
 - **Bauhöhe:** Das Display liegt über dem DevKit. Das DevKit steht in Buchsenleisten samt Modul etwa 13–16 mm hoch, und das Display muss mit seinen Bauteilen auf der Rückseite frei darüber stehen. Dafür eine entsprechend hohe Buchsenleiste bzw. Stiftleisten-Verlängerung für U4 und passende Abstandsbolzen verwenden. Am besten vor der Bestellung mit den echten Teilen nachmessen.
 - **Befestigungslöcher für das Display:** 4 × Ø 3,3 mm im Abstand von 76,2 × 43,2 mm; auf der Unterseite ist darum Platz für Schraubenköpfe (Ø 6 mm frei). Lochabstand mit dem eigenen Displaymodul vergleichen.
 - **USB:** Die USB-Buchsen des DevKit ragen rechts unter dem Display hervor und bleiben zugänglich.
