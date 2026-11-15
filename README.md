@@ -189,13 +189,32 @@ Den Block `psram:` nur löschen, wenn wirklich kein PSRAM da ist. Steht er in de
 | 1 | TFT 2,8" ILI9341 mit Touch (XPT2046), SPI, 320 × 240 |
 | 1 | ULN2803A (Darlington-Treiber, 8 Kanäle) |
 | 8 | Koppelrelais 12 V DC, 1 Wechsler, 250 V~ / ≥ 6 A (z. B. Finder Serie 38, Hutschiene); 6 für die Heizpatrone, 2 als Zusatzrelais |
-| 6 | Installationsschütz 230-V-Spule, passend zur Patrone (z. B. 20/25 A); **Q2, Q4, Q6 mit 1 Schließer + 1 Öffner** |
+| 6 | Installationsschütz mit **12-V-DC-Spule**, passend zur Patrone (z. B. 20/25 A); **Q2, Q4, Q6 mit 1 Schließer + 1 Öffner** |
+| 6 | Freilaufdiode 1N4007, je eine direkt an der Schützspule (entfällt, wenn das Schütz die Beschaltung schon eingebaut hat) |
 | 2–6 | DS18B20 wasserdicht (für Tauchhülse) |
-| 1 | Netzteil 12 V DC ≥ 1 A, Hutschiene (z. B. Mean Well HDR-15-12) |
+| 1 | Netzteil **Mean Well HDR-60-12** (12 V DC, 4,5 A, 54 W, Hutschiene) für Steuerung und Schützspulen |
+| 2 | Sicherung im 12-V-Kreis, z. B. Sicherungsklemme 5 × 20 mm: Steuerung ca. 1 A träge, Schützspulen z. B. 3,15 A träge |
 | 1 | DC/DC-Wandler 12 V → 5 V, ≥ 1 A (z. B. Traco TSR 1-2450) |
 | 3 | NPN-Transistor BC547 |
 | 8 / 3 | LED rot / LED blau |
 | 11 / 3 / 3 / 2 | Widerstand 1 kΩ / 47 kΩ / 10 kΩ / 4,7 kΩ |
+
+### 12-V-Versorgung (Mean Well HDR-60-12)
+
+Das HDR-60-12 liefert 12 V DC mit bis zu 4,5 A. Es versorgt die Steuerung und die Spulen der Schütze. Bei 9000 W sind alle sechs Schütze gleichzeitig an:
+
+| Verbraucher | Strom bei 12 V |
+|-------------|---------------:|
+| ESP32-S3 und Display (über den DC/DC-Wandler) | ca. 0,2 A |
+| 8 Koppelrelais mit LEDs | ca. 0,25 A |
+| 6 Schützspulen gleichzeitig | 6 × Spulenstrom, typisch 0,2–0,4 A je Schütz |
+| **Summe** | **ca. 1,7–2,9 A** von 4,5 A |
+
+- **Spulenstrom im Datenblatt prüfen:** Bis etwa 0,6 A je Schütz reicht das HDR-60-12. Schalten K7/K8 weitere 12-V-Verbraucher am selben Netzteil, diese dazurechnen.
+- **Zwei abgesicherte Abgänge:** Steuerung (DC/DC-Wandler, ULN2803A, Koppelrelais) mit ca. 1 A träge, Schützspulen mit z. B. 3,15 A träge. Das Netzteil hat zwar einen Kurzschlussschutz, die Sicherungen schützen aber die Leitungen und trennen einen Fehler im Schützkreis von der Steuerung.
+- **Ausgangsspannung auf 12,0 V lassen.** Das Poti am HDR-60-12 nicht verstellen.
+- **Plus und Minus nicht vertauschen:** Sonst schließt die Freilaufdiode am Schütz die Versorgung über den Relaiskontakt kurz, sobald das Relais anzieht.
+- Der 12-V-Ausgang ist Schutzkleinspannung (SELV). Die Steuerleitungen zu den Schützspulen führen also keine Netzspannung.
 
 ### Schaltungsvorschlag Steuerung
 
@@ -203,11 +222,16 @@ Den Block `psram:` nur löschen, wenn wirklich kein PSRAM da ist. Steht er in de
 
 **Signalweg:**
 1. Der ESP32-S3 steuert über eine **ULN2803A** die Spulen von 8 **Koppelrelais (12 V)**. GPIO high bedeutet Relais ein. Damit sind alle 8 Kanäle der ULN2803A belegt.
-2. Die Kontakte von K1–K6 schalten die 230-V-Spulen der **Schütze Q1–Q6**.
+2. Die Kontakte von K1–K6 schalten die **12-V-DC-Spulen der Schütze Q1–Q6**. Die 12 V kommen vom selben Netzteil, über eine eigene Sicherung.
 3. Die Schütze schalten die Heizelemente.
 4. K7 und K8 sind frei verwendbar.
 
-Die Freilaufdioden für die Relaisspulen sind in der ULN2803A eingebaut (Pin 10 COM an +12 V).
+**Freilaufdioden:**
+- **Koppelrelais:** Die Dioden sind in der ULN2803A eingebaut (Pin 10 COM an +12 V).
+- **Schützspulen:** Sie werden über die Relaiskontakte geschaltet und brauchen je eine **eigene Freilaufdiode direkt am Schütz**, z. B. 1N4007 mit Kathode an A1 (+) und Anode an A2 (−).
+  - Ohne Diode entsteht beim Abschalten ein Lichtbogen am Relaiskontakt, der bei Gleichstrom nicht von selbst erlischt. Die Spannungsspitze kann außerdem den ESP32 stören.
+  - Viele Schütze mit Elektronikspule (AC/DC) haben die Beschaltung schon eingebaut, dann entfällt die Diode (Datenblatt).
+  - Die Diode verzögert das Abfallen des Schützes um einige 10 ms. Die Umschaltpause von 0,5 s reicht dafür, sie sollte aber nicht stark verkürzt werden.
 
 **LED-Anzeigen laut Spezifikation:**
 - **Typ A (K1, K3, K5, K7, K8):** Rote LED mit 1 kΩ parallel zur Spule, leuchtet bei *ein*.
@@ -321,7 +345,7 @@ Unter `substitutions` in der YAML:
 
 - `pv_sensor`: Entität des PV-Überschuss-Sensors
 - `stufen_leistung`, `stufen_relais`: Leistungsstufen und Relaismuster (Reihenfolge K1 … K6). Bei Änderungen auch die Optionen von *Handleistung* anpassen.
-- `umschaltpause`: Pause beim Umschalten der /N-Relais (Standard 500 ms)
+- `umschaltpause`: Pause beim Umschalten der /N-Relais (Standard 500 ms). Wegen der Abfallverzögerung der Schütze nicht stark verkürzen.
 - Startwerte: `max_temperatur`, `temperatur_hysterese`, `einschalthysterese`, `ausschalthysterese`, `einschaltverzoegerung`, `ausschaltverzoegerung`, `display_timeout`
 - `flash_groesse`: Flash des S3-Moduls
 - `touch_…`: Touch-Kalibrierung
