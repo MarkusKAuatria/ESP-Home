@@ -14,8 +14,19 @@ Platine für die Heizpatronen-Steuerung: ESP32-S3-DevKitC-1 und 2,8"-Touch-Displ
 | [`schaltplan/schaltplan-P2.svg`](schaltplan/schaltplan-P2.svg) | Schaltplan Blatt 2: Relais K1–K8 mit LEDs und Klemmen |
 | [`schaltplan/schaltplan-P3.svg`](schaltplan/schaltplan-P3.svg) | Schaltplan Blatt 3: 12-V-Eingang, Verpolschutz, 3,3-V-Regler, Jumper |
 | [`BOM_Board1.xlsx`](BOM_Board1.xlsx) | Stückliste aus EasyEDA mit LCSC-Bestellnummern |
+| [`Gerber_PCB1.zip`](Gerber_PCB1.zip) | Fertigungsdaten: Gerber (Kupfer oben/unten, Lötstopp, Bestückungsdruck, Pastenmaske, Umriss), Bohrdaten (Excellon) und Flying-Probe-Testdaten. Die ZIP-Datei unverändert beim Leiterplattenhersteller hochladen. |
 
-Gerber- und Bestückungsdaten für die Fertigung erzeugt EasyEDA Pro aus dem Projekt (*Fertigung → Gerber* bzw. *BOM/Bestückungsdatei*).
+Die Gerber-Daten entsprechen genau dem Projekt im Repo: gleiche Netze, gleiche Bauteilpositionen. Die Bestückungsdatei (Pick and Place) für eine SMD-Bestückung beim Hersteller erzeugt EasyEDA Pro bei Bedarf aus dem Projekt.
+
+### Fertigungsdaten
+
+| | |
+|-|-|
+| Lagen | 2, FR4 1,6 mm, Kupfer 35 µm |
+| Kleinste Leiterbahn | 0,25 mm |
+| Bohrungen durchkontaktiert | 125 für Bauteile (0,8 / 1,0 / 1,1 / 1,5 mm) und 24 Vias (0,3 mm) |
+| Bohrungen nicht durchkontaktiert | 6 × 3,2 mm (Befestigung) und 4 × 3,3 mm (Display) |
+| Bestückungsdruck | nur oben |
 
 ## Eckdaten
 
@@ -111,6 +122,7 @@ Vier 3-polige Stiftleisten (2,54 mm) zwischen THmax und POWER, je Pin 1 = IO39 �
 
 - **DevKit:** ESP32-S3-DevKitC-1-N16R8 in zwei Buchsenleisten 1 × 22, Raster 2,54 mm.
 - **Display:** in eine 14-polige Buchsenleiste (2,54 mm) an U4. Die 4 SD-Karten-Pins (15–18) sind nicht angeschlossen. Am Display die Lötbrücke **J1 schließen**, weil VCC hier an 3,3 V liegt.
+- **Bohrungen für U4:** Sie sind nur 0,8 mm groß. Leisten mit den üblichen 0,64-mm-Vierkantstiften (Diagonale ca. 0,9 mm) passen dort nicht. Nur Buchsenleisten mit dünneren Lötstiften verwenden oder die Bohrungen im Footprint auf 1,0 mm vergrößern, wie beim DevKit.
 - **Bauhöhe:** Das Display liegt über dem DevKit. Das DevKit steht in Buchsenleisten samt Modul etwa 13–16 mm hoch, und das Display muss mit seinen Bauteilen auf der Rückseite frei darüber stehen. Dafür eine entsprechend hohe Buchsenleiste bzw. Stiftleisten-Verlängerung für U4 und passende Abstandsbolzen verwenden. Am besten vor der Bestellung mit den echten Teilen nachmessen.
 - **Befestigungslöcher für das Display:** 4 × Ø 3,3 mm im Abstand von 76,2 × 43,2 mm; auf der Unterseite ist darum Platz für Schraubenköpfe (Ø 6 mm frei). Lochabstand mit dem eigenen Displaymodul vergleichen.
 - **USB:** Die USB-Buchsen des DevKit ragen rechts unter dem Display hervor und bleiben zugänglich.
