@@ -4,6 +4,8 @@ Die Konfiguration [`heizpatrone.yaml`](heizpatrone.yaml) steuert eine 9-kW-Heizp
 
 ![Display: Automatik, Hand, Aus, Betriebsart wählen, Einstellungen, Übertemperatur](docs/display-vorschau.png)
 
+Für die Steuerung gibt es eine eigene Platine (EasyEDA Pro), siehe [Platine](#platine) und [`hardware/`](hardware/README.md).
+
 ## Leistungsstufen
 
 Laut Spezifikation (● = Relais ein):
@@ -73,7 +75,7 @@ Zwei weitere Relais, unabhängig von der Heizpatrone:
 - Am Display rechts neben der Heizleistung angezeigt (rot = ein).
 - Betriebsart, Übertemperatur und PV-Regelung beeinflussen sie nicht.
 - Nach einem Neustart oder Stromausfall stellen sie ihren letzten Zustand wieder her; beim allerersten Start sind sie aus. Sollen sie nach einem Neustart immer aus sein, in der YAML bei `k7`/`k8` `restore_mode: ALWAYS_OFF` eintragen.
-- Die Kontakte der Koppelrelais schalten bis 250 V~ / 6 A. Für größere Lasten ein Schütz dazwischen setzen, wie bei der Heizpatrone.
+- **Auf der Platine** (Relais G6K) schalten K7/K8 höchstens **24 V DC / 1 A**, keine Netzspannung. Beim Aufbau ohne Platine mit Hutschienen-Koppelrelais (siehe Stückliste) bis 250 V~ / 6 A. Für größere Lasten oder Netzspannung ein Schütz dazwischen setzen, wie bei der Heizpatrone.
 
 ## Maximaltemperatur
 
@@ -157,6 +159,19 @@ Der resistive Touch (XPT2046) muss einmal auf das eigene Display abgestimmt werd
 
 ## Hardware
 
+### Platine
+
+![Steuerplatine, 3D-Ansicht](docs/platine-3d.png)
+
+Die Steuerplatine „ESPHOME V1.0“ (140 × 100 mm, 2 Lagen) trägt alles außer Netzteil und Schützen. Projektdateien, Schaltplan, Stückliste und alle Details stehen in **[`hardware/README.md`](hardware/README.md)**.
+
+- **Gesteckt:** ESP32-S3-DevKitC-1 und das 2,8"-Display (liegt über dem DevKit).
+- **Versorgung:** nur 12 V DC an der Klemme POWER. Auf der Platine sitzen Verpolschutz und 3,3-V-Regler, die 5V-Klemme bleibt frei.
+- **Relais:** 8 Relais Omron G6K-2F-Y DC12 mit Klemmen L1, N-L2, L2, N-L3, L3, N-L1, K7, K8. Pin 1 = Öffner, 2 = COM, 3 = Schließer; **höchstens 24 V DC / 1 A**, passend für die 12-V-DC-Schützspulen.
+- **Fühler:** Klemmen THmax (Max-Fühler) und TH2.1–TH2.5 (Speicher), Aderfarben schwarz / gelb / rot.
+- **Jumper im Betrieb:** H2 auf *on – 3,3V*, H3 auf *3,3V – VT*. Am Display **J1 schließen**, es läuft hier an 3,3 V.
+- Die GPIO-Belegung entspricht genau der YAML, die Tabelle unter [Schaltungsvorschlag Steuerung](#schaltungsvorschlag-steuerung) gilt auch für die Platine.
+
 ### ESP32-Empfehlung
 
 **ESP32-S3-DevKitC-1-N16R8** von Espressif (Modul ESP32-S3-WROOM-1, 16 MB Flash, 8 MB Octal-PSRAM) mit **2,8"-TFT ILI9341 mit Touch (SPI, XPT2046)**.
@@ -181,19 +196,28 @@ Der resistive Touch (XPT2046) muss einmal auf das eigene Display abgestimmt werd
 
 Den Block `psram:` nur löschen, wenn wirklich kein PSRAM da ist. Steht er in der YAML, legt ESPHome den ganzen Bildpuffer an und erwartet dafür PSRAM.
 
-### Stückliste (Vorschlag)
+### Stückliste
+
+**Immer nötig (Schaltschrank):**
 
 | Anzahl | Teil |
 |-------:|------|
 | 1 | ESP32-S3-DevKitC-1-N16R8 (im Metallschrank: ESP32-S3-DevKitC-1U-N16R8 mit externer Antenne) |
 | 1 | TFT 2,8" ILI9341 mit Touch (XPT2046), SPI, 320 × 240 |
-| 1 | ULN2803A (Darlington-Treiber, 8 Kanäle) |
-| 8 | Koppelrelais 12 V DC, 1 Wechsler, 250 V~ / ≥ 6 A (z. B. Finder Serie 38, Hutschiene); 6 für die Heizpatrone, 2 als Zusatzrelais |
 | 6 | Installationsschütz mit **12-V-DC-Spule**, passend zur Patrone (z. B. 20/25 A); **Q2, Q4, Q6 mit 1 Schließer + 1 Öffner** |
 | 6 | Freilaufdiode 1N4007, je eine direkt an der Schützspule (entfällt, wenn das Schütz die Beschaltung schon eingebaut hat) |
 | 2–6 | DS18B20 wasserdicht (für Tauchhülse) |
 | 1 | Netzteil **Mean Well HDR-60-12** (12 V DC, 4,5 A, 54 W, Hutschiene) für Steuerung und Schützspulen |
 | 2 | Sicherung im 12-V-Kreis, z. B. Sicherungsklemme 5 × 20 mm: Steuerung ca. 1 A träge, Schützspulen z. B. 3,15 A träge |
+
+**Mit der Platine:** Platine und Bauteile laut [Stückliste der Platine](hardware/README.md#stückliste), dazu Buchsenleisten für DevKit und Display, Abstandsbolzen und 2 Jumper.
+
+**Ohne Platine** (Aufbau nach dem Schaltungsvorschlag unten, z. B. mit Hutschienen-Koppelrelais):
+
+| Anzahl | Teil |
+|-------:|------|
+| 1 | ULN2803A (Darlington-Treiber, 8 Kanäle) |
+| 8 | Koppelrelais 12 V DC, 1 Wechsler, 250 V~ / ≥ 6 A (z. B. Finder Serie 38, Hutschiene); 6 für die Heizpatrone, 2 als Zusatzrelais |
 | 1 | DC/DC-Wandler 12 V → 5 V, ≥ 1 A (z. B. Traco TSR 1-2450) |
 | 3 | NPN-Transistor BC547 |
 | 8 / 3 | LED rot / LED blau |
@@ -211,12 +235,18 @@ Das HDR-60-12 liefert 12 V DC mit bis zu 4,5 A. Es versorgt die Steuerung und di
 | **Summe** | **ca. 1,7–2,9 A** von 4,5 A |
 
 - **Spulenstrom im Datenblatt prüfen:** Bis etwa 0,6 A je Schütz reicht das HDR-60-12. Schalten K7/K8 weitere 12-V-Verbraucher am selben Netzteil, diese dazurechnen.
-- **Zwei abgesicherte Abgänge:** Steuerung (DC/DC-Wandler, ULN2803A, Koppelrelais) mit ca. 1 A träge, Schützspulen mit z. B. 3,15 A träge. Das Netzteil hat zwar einen Kurzschlussschutz, die Sicherungen schützen aber die Leitungen und trennen einen Fehler im Schützkreis von der Steuerung.
+- **Zwei abgesicherte Abgänge:** Steuerung (Platine an der Klemme POWER bzw. DC/DC-Wandler und Koppelrelais) mit ca. 1 A träge, Schützspulen mit z. B. 3,15 A träge. Bei der Platine gehen die 12 V für die Schützspulen an die COM-Pins der Relaisklemmen. Das Netzteil hat zwar einen Kurzschlussschutz, die Sicherungen schützen aber die Leitungen und trennen einen Fehler im Schützkreis von der Steuerung.
 - **Ausgangsspannung auf 12,0 V lassen.** Das Poti am HDR-60-12 nicht verstellen.
 - **Plus und Minus nicht vertauschen:** Sonst schließt die Freilaufdiode am Schütz die Versorgung über den Relaiskontakt kurz, sobald das Relais anzieht.
 - Der 12-V-Ausgang ist Schutzkleinspannung (SELV). Die Steuerleitungen zu den Schützspulen führen also keine Netzspannung.
 
 ### Schaltungsvorschlag Steuerung
+
+Das Prinzip der Steuerung, wie sie auch die Platine umsetzt. Die Platine weicht nur in diesen Punkten ab:
+- 3,3-V-Regler statt 5-V-DC/DC-Wandler
+- Display an 3,3 V mit geschlossenem J1
+- Verpolschutz am 12-V-Eingang
+- Relais G6K direkt auf der Leiterplatte, höchstens 24 V DC
 
 ![Schaltungsvorschlag Steuerung](docs/schaltplan-steuerung.svg)
 
@@ -286,7 +316,7 @@ Die üblichen 2,8"-Module (ILI9341 mit Touch XPT2046, 14-polige Stiftleiste) hab
 
 | Modul-Pin | Anschluss | Hinweis |
 |-----------|-----------|---------|
-| VCC | 5V | Das Modul hat einen eigenen 3,3-V-Regler, die Lötbrücke **J1 bleibt offen**. Alternativ VCC an 3V3, dann **J1 schließen**. An 3V3 mit offenem J1 läuft das Modul unterversorgt. |
+| VCC | 5V | Das Modul hat einen eigenen 3,3-V-Regler, die Lötbrücke **J1 bleibt offen**. Alternativ VCC an 3V3, dann **J1 schließen**. An 3V3 mit offenem J1 läuft das Modul unterversorgt. **Auf der Platine liegt VCC an 3,3 V, dort J1 schließen.** |
 | GND | GND | |
 | CS | GPIO10 | |
 | RESET | GPIO14 | |
