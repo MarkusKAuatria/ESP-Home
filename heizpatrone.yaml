@@ -89,8 +89,8 @@ substitutions:
   touch_y_min: "300"
   touch_y_max: "3800"
   touch_swap_xy: "true"
-  touch_mirror_x: "true"
-  touch_mirror_y: "true"
+  touch_mirror_x: "false"
+  touch_mirror_y: "false"
 
   # Layout der Touch-Knöpfe (x, y, Breite, Höhe) – gilt für Anzeige UND
   # Touch-Auswertung. Normalerweise nicht ändern.
@@ -848,7 +848,7 @@ display:
     cs_pin: ${pin_display_cs}
     dc_pin: ${pin_display_dc}
     reset_pin: ${pin_display_reset}
-    rotation: 90
+    rotation: 270
     update_interval: 1s
     lambda: |-
       static const int LEISTUNG[] = {${stufen_leistung}};
