@@ -141,7 +141,9 @@ Von beiden Unterseiten geht es mit „Zurück zur Übersicht“ zurück, oder au
 
 Gedrückte Knöpfe leuchten kurz auf. Zwei Berührungen innerhalb von 0,3 s zählen als eine.
 
-Zeigt dein Display falsche Farben oder ein Negativbild, beim `display:` die Optionen `invert_colors: true` bzw. `color_order: bgr` ergänzen. Steht das Bild auf dem Kopf, `rotation: 270` statt `90` eintragen und danach die Touch-Ausrichtung neu prüfen.
+Zeigt dein Display falsche Farben oder ein Negativbild, beim `display:` die Optionen `invert_colors: true` bzw. `color_order: bgr` ergänzen.
+
+**Ausrichtung:** Voreingestellt sind `rotation: 270` und `touch_mirror_x`/`touch_mirror_y: "false"`. Das passt zur [Platine](#platine), auf der das Display um 180° gedreht eingebaut ist. Ist das Display anders herum montiert (z. B. beim Aufbau ohne Platine) und steht das Bild auf dem Kopf, `rotation: 90` und beide `touch_mirror_…: "true"` eintragen und danach die Touch-Ausrichtung prüfen.
 
 ### Touch kalibrieren
 
@@ -152,8 +154,8 @@ Der resistive Touch (XPT2046) muss einmal auf das eigene Display abgestimmt werd
 3. Kleinster und größter Roh-x-Wert → `touch_x_min` / `touch_x_max`; dasselbe für y.
 4. Prüfen, ob die Richtung stimmt:
    - **Achsen vertauscht** (nach rechts tippen ändert vor allem y): `touch_swap_xy` umstellen und Schritt 2 wiederholen.
-   - **x-Richtung:** Wird Roh-x nach rechts *kleiner*, `touch_mirror_x: "true"` (voreingestellt), wird es größer, `"false"`.
-   - **y-Richtung:** Wird Roh-y nach unten *kleiner*, `touch_mirror_y: "true"` (voreingestellt), wird es größer, `"false"`.
+   - **x-Richtung:** Wird Roh-x nach rechts *kleiner*, `touch_mirror_x: "true"`, wird es größer, `"false"` (voreingestellt, passend zur Platine).
+   - **y-Richtung:** Wird Roh-y nach unten *kleiner*, `touch_mirror_y: "true"`, wird es größer, `"false"` (voreingestellt, passend zur Platine).
    - `min` muss immer kleiner als `max` sein, auch bei gespiegelter Achse.
 5. Neu flashen. Die angezeigten `x`/`y` sollten jetzt etwa 0–320 bzw. 0–240 ergeben, und die Knöpfe reagieren dort, wo man tippt.
 
