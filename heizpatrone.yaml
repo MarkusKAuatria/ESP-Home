@@ -54,6 +54,17 @@ substitutions:
   # Display-Beleuchtung aus nach x Minuten ohne Berührung (0 = immer an)
   display_timeout: "10"
 
+  # Korrekturwerte der Temperaturfühler in K, nur hier einstellbar (nicht in
+  # Home Assistant oder am Display). Angezeigt und ausgewertet wird
+  # Messwert + Offset. Beispiel: Fühler zeigt 1,2 °C zu viel -> "-1.2".
+  # Der Offset des Max-Fühlers wirkt auch auf die Übertemperatur-Abschaltung.
+  offset_max: "0.0"
+  offset_speicher_1: "0.0"
+  offset_speicher_2: "0.0"
+  offset_speicher_3: "0.0"
+  offset_speicher_4: "0.0"
+  offset_speicher_5: "0.0"
+
   # Flash-Größe des ESP32-S3-Moduls (N16R8 = 16MB; ältere N8/N8R2/N8R8 = 8MB)
   flash_groesse: 16MB
 
@@ -221,6 +232,8 @@ sensor:
     one_wire_id: bus_max
     name: "Temperatur Max-Fühler"
     update_interval: 5s
+    filters:
+      - offset: ${offset_max}
 
   # Speicherfühler: Zuerst per "index" (Reihenfolge nach Adresse, NICHT nach
   # Einbauhöhe). Nach dem ersten Start die Adressen aus dem Log ablesen und
@@ -232,30 +245,40 @@ sensor:
     index: 0
     name: "Speicher 1 (oben)"
     update_interval: 30s
+    filters:
+      - offset: ${offset_speicher_1}
   - platform: dallas_temp
     id: t_speicher_2
     one_wire_id: bus_speicher
     index: 1
     name: "Speicher 2"
     update_interval: 30s
+    filters:
+      - offset: ${offset_speicher_2}
   - platform: dallas_temp
     id: t_speicher_3
     one_wire_id: bus_speicher
     index: 2
     name: "Speicher 3"
     update_interval: 30s
+    filters:
+      - offset: ${offset_speicher_3}
   - platform: dallas_temp
     id: t_speicher_4
     one_wire_id: bus_speicher
     index: 3
     name: "Speicher 4"
     update_interval: 30s
+    filters:
+      - offset: ${offset_speicher_4}
   - platform: dallas_temp
     id: t_speicher_5
     one_wire_id: bus_speicher
     index: 4
     name: "Speicher 5 (unten)"
     update_interval: 30s
+    filters:
+      - offset: ${offset_speicher_5}
 
   # PV-Überschuss aus Home Assistant
   - platform: homeassistant

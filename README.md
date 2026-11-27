@@ -83,6 +83,7 @@ Zwei weitere Relais, unabhängig von der Heizpatrone:
 - Liegt der Messwert **über der Maximaltemperatur** (Standard 80 °C), werden sofort alle Relais abgeschaltet (0 W), in jeder Betriebsart.
 - **Wieder eingeschaltet** wird erst, wenn die Temperatur um die **Temperatur-Hysterese** gefallen ist (Standard 5 K, also bei 75 °C).
 - **Liefert der Fühler keinen Messwert** (defekt, abgesteckt, kurz nach dem Start), bleibt ebenfalls alles aus.
+- Ausgewertet wird der **korrigierte Messwert**, also mit dem Offset `offset_max` aus der YAML (siehe [Fühler abgleichen](#fühler-abgleichen)).
 
 > ⚠️ Diese Abschaltung ist eine Komfortfunktion, **keine Sicherheitseinrichtung**. Die Heizpatrone braucht ihren eigenen Sicherheitstemperaturbegrenzer (STB) bzw. Thermostat, der direkt die Leistung trennt. Die Maximaltemperatur am besten unter dem Thermostat der Patrone einstellen.
 
@@ -366,10 +367,26 @@ Fehlt bei deinem Modul der Transistor am LED-Pin (LED hängt direkt an den Leuch
    - Im Log stehen beim Start die gefundenen Adressen je Bus.
    - Bei den Sensoren `Speicher 1 … 5` jeweils `index: X` durch `address: 0x…` ersetzen, sodass *Speicher 1* der oberste Fühler ist.
    - Nicht vorhandene Fühler aus der YAML löschen.
-6. **Erst ohne Leistungsteil testen:**
+6. **Fühler abgleichen** (optional), siehe unten.
+7. **Erst ohne Leistungsteil testen:**
    - Mit abgeklemmten Schützen im Handbetrieb alle Stufen durchschalten (am Display mit −/+).
    - Relais und LEDs mit der Tabelle oben vergleichen.
    - Bei Stufenwechseln mit K2/K4/K6 auf die Pausen achten.
+
+### Fühler abgleichen
+
+Jeder Temperatureingang hat einen eigenen Korrekturwert in K. Er ist **nur in der YAML** einstellbar, nicht in Home Assistant und nicht am Display:
+
+| Substitution | Fühler |
+|--------------|--------|
+| `offset_max` | Max-Fühler (Eingang 1) |
+| `offset_speicher_1` … `offset_speicher_5` | Speicher 1 (oben) … Speicher 5 (unten) |
+
+- Angezeigt, an Home Assistant gemeldet und ausgewertet wird **Messwert + Offset**.
+- Beispiel: Ein Fühler zeigt 1,2 °C zu viel, dann `"-1.2"` eintragen. Zeigt er zu wenig, einen positiven Wert.
+- Zum Vergleich am besten alle Fühler zusammen mit einem Referenzthermometer in dasselbe Wasserbad halten.
+- Der Offset des Max-Fühlers verschiebt auch die Übertemperatur-Abschaltung.
+- Nach einer Änderung neu flashen; über WLAN genügt `esphome run heizpatrone.yaml`.
 
 ## Anpassen
 
@@ -379,6 +396,7 @@ Unter `substitutions` in der YAML:
 - `stufen_leistung`, `stufen_relais`: Leistungsstufen und Relaismuster (Reihenfolge K1 … K6). Bei Änderungen auch die Optionen von *Handleistung* anpassen.
 - `umschaltpause`: Pause beim Umschalten der /N-Relais (Standard 500 ms). Wegen der Abfallverzögerung der Schütze nicht stark verkürzen.
 - Startwerte: `max_temperatur`, `temperatur_hysterese`, `einschalthysterese`, `ausschalthysterese`, `einschaltverzoegerung`, `ausschaltverzoegerung`, `display_timeout`
+- `offset_max`, `offset_speicher_1` … `offset_speicher_5`: Korrekturwerte der Temperaturfühler (siehe [Fühler abgleichen](#fühler-abgleichen))
 - `flash_groesse`: Flash des S3-Moduls
 - `touch_…`: Touch-Kalibrierung
 - `pin_…`: alle GPIOs
